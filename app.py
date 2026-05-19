@@ -1,168 +1,255 @@
 #!/usr/bin/env python3
 """
 CRA Portal - 临床研究助理管理中心
-一个可视化的CRA工作管理平台
+完整版：支持项目CRUD、待办事项、文件管理
 """
 
 import os
 import json
-import markdown
+import uuid
+from datetime import datetime, date
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
 from pathlib import Path
-import re
 
 app = Flask(__name__)
 CORS(app)
 
-# 配置
-WORKSPACE = Path.home() / ".qclaw/workspace"
-WORK_DIR = WORKSPACE / "work"
-PROJECTS_DIR = WORK_DIR / "projects"
-FILES_DIR = WORK_DIR / "files"
+# 配置 - Render 上使用 data/ 目录存储数据
+DATA_DIR = Path('data')
+PROJECTS_FILE = DATA_DIR / 'projects.json'
+TASKS_FILE = DATA_DIR / 'tasks.json'
 
-# ========== 工具函数 ==========
+# ========== 数据初始化 ==========
 
-def read_markdown_file(file_path):
-    """读取Markdown文件并转换为HTML"""
+def ensure_data_dir():
+    """确保数据目录存在"""
+    DATA_DIR.mkdir(exist_ok=True)
+    if not PROJECTS_FILE.exists():
+        write_json(PROJECTS_FILE, [])
+    if not TASKS_FILE.exists():
+        write_json(TASKS_FILE, [])
+
+def read_json(path):
+    """读取JSON文件"""
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        html = markdown.markdown(content, extensions=['extra', 'nl2br'])
-        return {"success": True, "content": content, "html": html}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return []
 
-def write_markdown_file(file_path, content):
-    """写入Markdown文件"""
-    try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        return {"success": True}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+def write_json(path, data):
+    """写入JSON文件"""
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-def parse_project_file(file_path):
-    """解析项目Markdown文件，提取结构化数据"""
-    result = read_markdown_file(file_path)
-    if not result["success"]:
-        return result
-    
-    content = result["content"]
-    data = {
-        "raw_content": content,
-        "project_id": "",
-        "project_name": "",
-        "centers": [],
-        "tasks": []
+# ========== 项目 API ==========
+
+@app.route('/api/projects', methods=['GET'])
+def get_projects():
+    """获取所有项目列表"""
+    projects = read_json(PROJECTS_FILE)
+    # 计算每个项目的任务统计
+    tasks = read_json(TASKS_FILE)
+    for p in projects:
+        p_tasks = [t for t in tasks if t.get('project_id') == p['id']]
+        p['task_count'] = len(p_tasks)
+        p['done_count'] = len([t for t in p_tasks if t.get('done')])
+    return jsonify({"success": True, "projects": projects})
+
+@app.route('/api/projects', methods=['POST'])
+def create_project():
+    """创建新项目"""
+    data = request.json or {}
+    project = {
+        "id": str(uuid.uuid4())[:8],
+        "name": data.get('name', '未命名项目'),
+        "code": data.get('code', ''),
+        "stage": data.get('stage', '进行中'),
+        "center_count": int(data.get('center_count', 0)),
+        "dbl_date": data.get('dbl_date', ''),
+        "notes": data.get('notes', ''),
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
     }
     
-    # 提取项目编号
-    match = re.search(r'\*\*项目编号\*\*:\s*(.+)', content)
-    if match:
-        data["project_id"] = match.group(1).strip()
+    projects = read_json(PROJECTS_FILE)
+    projects.append(project)
+    write_json(PROJECTS_FILE, projects)
     
-    # 提取项目全称
-    match = re.search(r'\*\*项目全称\*\*:\s*(.+)', content)
-    if match:
-        data["project_name"] = match.group(1).strip()
-    
-    # 提取中心信息（简单解析）
-    center_pattern = r'###\s*0(\d)\s*中心.*?\*\*状态\*\*:\s*(.+?)(?=\n|$)'
-    for match in re.finditer(center_pattern, content, re.DOTALL):
-        center_id = match.group(1)
-        status = match.group(2).strip()
-        data["centers"].append({
-            "id": f"0{center_id}",
-            "status": status
-        })
-    
-    return {"success": True, **data}
+    return jsonify({"success": True, "project": project})
 
-# ========== 路由 ==========
+@app.route('/api/project/<project_id>', methods=['GET'])
+def get_project(project_id):
+    """获取单个项目详情"""
+    projects = read_json(PROJECTS_FILE)
+    project = next((p for p in projects if p['id'] == project_id), None)
+    if not project:
+        return jsonify({"success": False, "error": "项目不存在"}), 404
+    
+    # 获取关联的待办事项
+    tasks = read_json(TASKS_FILE)
+    project_tasks = [t for t in tasks if t.get('project_id') == project_id]
+    project['tasks'] = project_tasks
+    
+    return jsonify({"success": True, **project})
+
+@app.route('/api/project/<project_id>', methods=['PUT'])
+def update_project(project_id):
+    """更新项目信息"""
+    projects = read_json(PROJECTS_FILE)
+    idx = next((i for i, p in enumerate(projects) if p['id'] == project_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "项目不存在"}), 404
+    
+    data = request.json or {}
+    project = projects[idx]
+    
+    # 只更新允许的字段
+    for field in ['name', 'code', 'stage', 'center_count', 'dbl_date', 'notes']:
+        if field in data:
+            project[field] = data[field]
+    
+    project['updated_at'] = datetime.now().isoformat()
+    projects[idx] = project
+    write_json(PROJECTS_FILE, projects)
+    
+    return jsonify({"success": True, "project": project})
+
+@app.route('/api/project/<project_id>', methods=['DELETE'])
+def delete_project(project_id):
+    """删除项目"""
+    projects = read_json(PROJECTS_FILE)
+    projects = [p for p in projects if p['id'] != project_id]
+    write_json(PROJECTS_FILE, projects)
+    
+    # 同时删除关联的待办事项
+    tasks = read_json(TASKS_FILE)
+    tasks = [t for t in tasks if t.get('project_id') != project_id]
+    write_json(TASKS_FILE, tasks)
+    
+    return jsonify({"success": True})
+
+# ========== 待办事项 API ==========
+
+@app.route('/api/tasks', methods=['GET'])
+def get_all_tasks():
+    """获取所有待办事项（可按项目筛选）"""
+    tasks = read_json(TASKS_FILE)
+    project_id = request.args.get('project_id')
+    
+    if project_id:
+        tasks = [t for t in tasks if t.get('project_id') == project_id]
+    
+    # 按优先级排序：高 > 中 > 低
+    priority_order = {'high': 0, 'medium': 1, 'low': 2}
+    tasks.sort(key=lambda t: (not t.get('done'), priority_order.get(t.get('priority', 'medium'), 1)))
+    
+    return jsonify({"success": True, "tasks": tasks})
+
+@app.route('/api/tasks', methods=['POST'])
+def create_task():
+    """创建新待办事项"""
+    data = request.json or {}
+    task = {
+        "id": str(uuid.uuid4())[:8],
+        "title": data.get('title', '未命名任务'),
+        "project_id": data.get('project_id', ''),
+        "priority": data.get('priority', 'medium'),
+        "due_date": data.get('due_date', ''),
+        "done": False,
+        "created_at": datetime.now().isoformat()
+    }
+    
+    tasks = read_json(TASKS_FILE)
+    tasks.append(task)
+    write_json(TASKS_FILE, tasks)
+    
+    return jsonify({"success": True, "task": task})
+
+@app.route('/api/task/<task_id>', methods=['PUT'])
+def update_task(task_id):
+    """更新待办事项"""
+    tasks = read_json(TASKS_FILE)
+    idx = next((i for i, t in enumerate(tasks) if t['id'] == task_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "待办事项不存在"}), 404
+    
+    data = request.json or {}
+    task = tasks[idx]
+    
+    for field in ['title', 'project_id', 'priority', 'due_date', 'done']:
+        if field in data:
+            task[field] = data[field]
+    
+    tasks[idx] = task
+    write_json(TASKS_FILE, tasks)
+    
+    return jsonify({"success": True, "task": task})
+
+@app.route('/api/task/<task_id>', methods=['DELETE'])
+def delete_task(task_id):
+    """删除待办事项"""
+    tasks = read_json(TASKS_FILE)
+    tasks = [t for t in tasks if t['id'] != task_id]
+    write_json(TASKS_FILE, tasks)
+    
+    return jsonify({"success": True})
+
+# ========== 统计 API ==========
+
+@app.route('/api/stats')
+def get_stats():
+    """获取统计数据"""
+    projects = read_json(PROJECTS_FILE)
+    tasks = read_json(TASKS_FILE)
+    
+    total_projects = len(projects)
+    active_projects = len([p for p in projects if p.get('stage') == '进行中'])
+    total_tasks = len(tasks)
+    done_tasks = len([t for t in tasks if t.get('done')])
+    pending_tasks = total_tasks - done_tasks
+    
+    high_priority = len([t for t in tasks if not t.get('done') and t.get('priority') == 'high'])
+    
+    # 即将到期的任务（7天内）
+    today = date.today()
+    due_soon = 0
+    for t in tasks:
+        if not t.get('done') and t.get('due_date'):
+            try:
+                due = date.fromisoformat(t['due_date'])
+                if (due - today).days <= 7 and (due - today).days >= 0:
+                    due_soon += 1
+            except:
+                pass
+    
+    return jsonify({
+        "success": True,
+        "stats": {
+            "total_projects": total_projects,
+            "active_projects": active_projects,
+            "total_tasks": total_tasks,
+            "done_tasks": done_tasks,
+            "pending_tasks": pending_tasks,
+            "high_priority": high_priority,
+            "due_soon": due_soon
+        }
+    })
+
+# ========== 页面路由 ==========
 
 @app.route('/')
 def index():
     """主页"""
     return render_template('index.html')
 
-@app.route('/api/projects')
-def get_projects():
-    """获取所有项目列表"""
-    projects = []
-    if PROJECTS_DIR.exists():
-        for f in PROJECTS_DIR.glob("*.md"):
-            projects.append({
-                "id": f.stem,
-                "name": f.stem
-            })
-    return jsonify({"success": True, "projects": projects})
-
-@app.route('/api/project/<project_id>')
-def get_project(project_id):
-    """获取单个项目详情"""
-    file_path = PROJECTS_DIR / f"{project_id}.md"
-    if not file_path.exists():
-        return jsonify({"success": False, "error": "项目不存在"}), 404
-    
-    data = parse_project_file(file_path)
-    return jsonify(data)
-
-@app.route('/api/project/<project_id>/update', methods=['POST'])
-def update_project(project_id):
-    """更新项目文件"""
-    file_path = PROJECTS_DIR / f"{project_id}.md"
-    if not file_path.exists():
-        return jsonify({"success": False, "error": "项目不存在"}), 404
-    
-    data = request.json
-    content = data.get("content", "")
-    
-    result = write_markdown_file(file_path, content)
-    return jsonify(result)
-
-@app.route('/api/files/<project_id>')
-def get_files(project_id):
-    """获取项目文件列表"""
-    project_files_dir = FILES_DIR / project_id
-    files = []
-    
-    if project_files_dir.exists():
-        for f in project_files_dir.rglob("*"):
-            if f.is_file():
-                rel_path = f.relative_to(project_files_dir)
-                files.append({
-                    "name": f.name,
-                    "path": str(rel_path),
-                    "size": f.stat().st_size
-                })
-    
-    return jsonify({"success": True, "files": files})
-
-@app.route('/api/files/<project_id>/<path:file_path>')
-def download_file(project_id, file_path):
-    """下载文件"""
-    return send_from_directory(FILES_DIR / project_id, file_path)
-
-@app.route('/api/tasks')
-def get_all_tasks():
-    """获取所有待办事项"""
-    tasks = []
-    if PROJECTS_DIR.exists():
-        for f in PROJECTS_DIR.glob("*.md"):
-            result = parse_project_file(f)
-            if result["success"] and "tasks" in result:
-                for task in result["tasks"]:
-                    task["project"] = f.stem
-                    tasks.append(task)
-    return jsonify({"success": True, "tasks": tasks})
-
 # ========== 主程序 ==========
 
 if __name__ == '__main__':
-    print("="*50)
+    ensure_data_dir()
+    print("=" * 50)
     print("CRA Portal 启动中...")
-    print(f"工作目录: {WORK_DIR}")
-    print("访问地址: <ADDRESS_REDACTED>")
-    print("="*50)
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    print(f"数据目录: {DATA_DIR.absolute()}")
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
