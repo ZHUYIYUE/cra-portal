@@ -18,7 +18,8 @@ CORS(app)
 # 配置 - Render 上使用 data/ 目录存储数据
 DATA_DIR = Path('data')
 PROJECTS_FILE = DATA_DIR / 'projects.json'
-TASKS_FILE = DATA_DIR / 'tasks.json'\nCENTERS_FILE = DATA_DIR / 'centers.json'
+TASKS_FILE = DATA_DIR / 'tasks.json'
+CENTERS_FILE = DATA_DIR / 'centers.json'
 
 # ========== 数据初始化 ==========
 
