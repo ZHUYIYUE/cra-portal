@@ -612,10 +612,10 @@ function viewTaskDetail(taskId) {
     alert(
         `📋 ${task.title}\n\n` +
         `项目：${proj ? proj.name : '未关联'}\n` +
-        `优先级：{{high:'高',medium:'中',low:'低'}[task.priority]||task.priority}\n` +
+        `优先级：${{high:'高',medium:'中',low:'低'}[task.priority]||task.priority}\n` +
         `截止：${task.due_date || '未设置'}\n` +
         `状态：${task.done ? '✅ 已完成' : '⏳ 进行中'}\n\n` +
-        `创建时间：${task.created_at ? task.created_id.slice(0,16) : '未知'}`
+        `创建时间：${task.created_at ? task.created_at.slice(0,16) : '未知'}`
     );
 }
 
@@ -639,4 +639,72 @@ function hideLoading() { document.getElementById('loading').classList.remove('sh
 function showError(msg) {
     document.getElementById('pageContent').innerHTML =
         `<div class="card"><p style="color:red;"><i class="fas fa-exclamation-circle"></i> ${msg}</p></div>`;
+}
+
+// ========== 中心管理 ==========
+
+async function loadProjectCenters(projectId) {
+    try {
+        const res = await fetch(`/api/centers?project_id=${projectId}`);
+        const data = await res.json();
+        if (data.success) {
+            renderCenters(data.centers, projectId);
+        }
+    } catch (err) {
+        console.error('加载中心失败:', err);
+    }
+}
+
+function renderCenters(centers, projectId) {
+    const container = document.getElementById('projectCenters');
+    if (!container) {
+        // 如果容器不存在，创建它
+        const detail = document.getElementById('projectDetail');
+        if (detail) {
+            detail.innerHTML += '<div id="projectCentersSection"><h3>中心列表</h3><div id="projectCenters"></div><button onclick="showAddCenterModal(\"' + projectId + '\")">+ 添加中心</button></div>';
+        }
+    }
+    
+    const el = document.getElementById('projectCenters');
+    if (!el) return;
+    
+    if (centers.length === 0) {
+        el.innerHTML = '<p style="color:#999">暂无中心，点击上方按钮添加</p>';
+        return;
+    }
+    
+    el.innerHTML = centers.map(c => `
+        <div style="border:1px solid #e0e0e0;padding:12px;margin:8px 0;border-radius:6px;cursor:pointer" onclick="showCenterDetail('${c.id}')">
+            <strong>${escapeHtml(c.code)}</strong> - ${escapeHtml(c.name)}
+        </div>
+    `).join('');
+}
+
+function showAddCenterModal(projectId) {
+    const code = prompt('中心编号（如：01）:');
+    if (!code) return;
+    const name = prompt('中心名称:');
+    if (!name) return;
+    
+    fetch('/api/centers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: projectId, code: code, name: name})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            showToast('中心添加成功');
+            loadProjectCenters(projectId);
+        }
+    });
+}
+
+async function showCenterDetail(centerId) {
+    try {
+        const res = await fetch(`/api/centers?center_id=${centerId}`);
+        const data = await res.json();
+        // TODO: show center detail and its tasks
+        showToast('中心详情功能开发中');
+    } catch (err) {
+        console.error(err);
+    }
 }

@@ -18,7 +18,7 @@ CORS(app)
 # 配置 - Render 上使用 data/ 目录存储数据
 DATA_DIR = Path('data')
 PROJECTS_FILE = DATA_DIR / 'projects.json'
-TASKS_FILE = DATA_DIR / 'tasks.json'
+TASKS_FILE = DATA_DIR / 'tasks.json'\nCENTERS_FILE = DATA_DIR / 'centers.json'
 
 # ========== 数据初始化 ==========
 
@@ -123,10 +123,14 @@ def delete_project(project_id):
     projects = [p for p in projects if p['id'] != project_id]
     write_json(PROJECTS_FILE, projects)
     
-    # 同时删除关联的待办事项
+    # 同时删除关联的待办事项和中心
     tasks = read_json(TASKS_FILE)
     tasks = [t for t in tasks if t.get('project_id') != project_id]
     write_json(TASKS_FILE, tasks)
+    
+    centers = read_json(CENTERS_FILE)
+    centers = [c for c in centers if c.get('project_id') != project_id]
+    write_json(CENTERS_FILE, centers)
     
     return jsonify({"success": True})
 
@@ -192,6 +196,75 @@ def delete_task(task_id):
     """删除待办事项"""
     tasks = read_json(TASKS_FILE)
     tasks = [t for t in tasks if t['id'] != task_id]
+    write_json(TASKS_FILE, tasks)
+    
+    return jsonify({"success": True})
+
+
+
+# ========== 中心 API ==========
+
+@app.route('/api/centers', methods=['GET'])
+def get_centers():
+    """获取中心列表（可按项目筛选）"""
+    centers = read_json(CENTERS_FILE)
+    project_id = request.args.get('project_id')
+    
+    if project_id:
+        centers = [c for c in centers if c.get('project_id') == project_id]
+    
+    return jsonify({"success": True, "centers": centers})
+
+@app.route('/api/centers', methods=['POST'])
+def create_center():
+    """创建新中心"""
+    data = request.json or {}
+    center = {
+        "id": str(uuid.uuid4())[:8],
+        "project_id": data.get('project_id', ''),
+        "code": data.get('code', ''),
+        "name": data.get('name', '未命名中心'),
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    
+    centers = read_json(CENTERS_FILE)
+    centers.append(center)
+    write_json(CENTERS_FILE, centers)
+    
+    return jsonify({"success": True, "center": center})
+
+@app.route('/api/center/<center_id>', methods=['PUT'])
+def update_center(center_id):
+    """更新中心信息"""
+    centers = read_json(CENTERS_FILE)
+    idx = next((i for i, c in enumerate(centers) if c['id'] == center_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "中心不存在"}), 404
+    
+    data = request.json or {}
+    center = centers[idx]
+    
+    for field in ['code', 'name']:
+        if field in data:
+            center[field] = data[field]
+    
+    center['updated_at'] = datetime.now().isoformat()
+    centers[idx] = center
+    write_json(CENTERS_FILE, centers)
+    
+    return jsonify({"success": True, "center": center})
+
+@app.route('/api/center/<center_id>', methods=['DELETE'])
+def delete_center(center_id):
+    """删除中心"""
+    centers = read_json(CENTERS_FILE)
+    centers = [c for c in centers if c['id'] != center_id]
+    write_json(CENTERS_FILE, centers)
+    
+    # 同时删除关联的任务
+    tasks = read_json(TASKS_FILE)
+    tasks = [t for t in tasks if t.get('center_id') != center_id]
     write_json(TASKS_FILE, tasks)
     
     return jsonify({"success": True})
