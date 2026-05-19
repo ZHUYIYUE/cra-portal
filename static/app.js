@@ -143,24 +143,25 @@ async function loadProjects(content) {
                 </button>
             </div>
         </div>
-        <div class="projects-grid">
-            ${state.projects.length === 0 ?
-                '<p style="color:#999;grid-column:1/-1;">暂无项目，点击上方按钮创建</p>' :
-                state.projects.map(p => `
-                    <div class="project-card" onclick="viewProject('${p.id}')">
-                        <div style="display:flex;justify-content:space-between;align-items:start;">
-                            <h3><i class="fas fa-folder"></i> ${escHtml(p.name)}</h3>
-                            <button class="btn-icon" onclick="event.stopPropagation();confirmDeleteProject('${p.id}','${escHtml(p.name)}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
-                        </div>
-                        <p>编号: ${escHtml(p.code || '未设置')}</p>
-                        <p>中心: ${p.center_count || 0} 个 | 待办: ${p.task_count || 0} 项</p>
-                        <span class="status status-${p.stage === '进行中' ? 'active' : 'planning'}">${escHtml(p.stage)}</span>
-                        ${p.dbl_date ? `<br><small style="color:#e74c3c;">⚠️ DBL: ${escHtml(p.dbl_date)}</small>` : ''}
-                    </div>
-                `).join('')
-            )}
-        </div>
+        <div class="projects-grid" id="projectsGrid"></div>
     `;
+
+    if (state.projects.length === 0) {
+        document.getElementById('projectsGrid').innerHTML = '<p style="color:#999;grid-column:1/-1;">暂无项目，点击上方按钮创建</p>';
+    } else {
+        document.getElementById('projectsGrid').innerHTML = state.projects.map(p => `
+            <div class="project-card" onclick="viewProject('${p.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:start;">
+                    <h3><i class="fas fa-folder"></i> ${escHtml(p.name)}</h3>
+                    <button class="btn-icon" onclick="event.stopPropagation();confirmDeleteProject('${p.id}','${escHtml(p.name)}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                </div>
+                <p>编号: ${escHtml(p.code || '未设置')}</p>
+                <p>中心: ${p.center_count || 0} 个 | 待办: ${p.task_count || 0} 项</p>
+                <span class="status status-${p.stage === '进行中' ? 'active' : 'planning'}">${escHtml(p.stage)}</span>
+                ${p.dbl_date ? `<br><small style="color:#e74c3c;">⚠️ DBL: ${escHtml(p.dbl_date)}</small>` : ''}
+            </div>
+        `).join('');
+    }
 }
 
 // ========== 查看项目详情 ==========
