@@ -1,0 +1,7 @@
+# CRA Portal - Render部署配置
+
+runtime: python3
+entrypoint: gunicorn app:app
+
+# 或者使用 start command:
+# gunicorn app:app
