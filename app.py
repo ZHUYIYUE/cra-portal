@@ -254,7 +254,7 @@ def update_center(center_id):
     data = request.json or {}
     center = centers[idx]
     
-    for field in ['code', 'name']:
+    for field in ['code', 'name', 'pi', 'department', 'notes']:
         if field in data:
             center[field] = data[field]
     
