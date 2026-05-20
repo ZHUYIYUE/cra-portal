@@ -254,7 +254,7 @@ def update_center(center_id):
     data = request.json or {}
     center = centers[idx]
     
-    for field in ['code', 'name', 'pi', 'department', 'notes']:
+    for field in ['code', 'name', 'pi', 'department', 'notes', 'milestones']:
         if field in data:
             center[field] = data[field]
     
@@ -263,6 +263,31 @@ def update_center(center_id):
     write_json(CENTERS_FILE, centers)
     
     return jsonify({"success": True, "center": center})
+
+@app.route('/api/center/<center_id>/milestone/<int:milestone_idx>', methods=['PUT'])
+def toggle_milestone(center_id, milestone_idx):
+    """切换单个里程碑完成状态"""
+    centers = read_json(CENTERS_FILE)
+    idx = next((i for i, c in enumerate(centers) if c['id'] == center_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "中心不存在"}), 404
+    
+    center = centers[idx]
+    milestones = center.get('milestones', [])
+    if milestone_idx < 0 or milestone_idx >= len(milestones):
+        return jsonify({"success": False, "error": "里程碑索引无效"}), 400
+    
+    data = request.json or {}
+    milestones[milestone_idx]['done'] = data.get('done', not milestones[milestone_idx].get('done', False))
+    if data.get('actual_date'):
+        milestones[milestone_idx]['actual_date'] = data['actual_date']
+    center['milestones'] = milestones
+    center['updated_at'] = datetime.now().isoformat()
+    centers[idx] = center
+    write_json(CENTERS_FILE, centers)
+    
+    done_count = sum(1 for m in milestones if m.get('done'))
+    return jsonify({"success": True, "milestone": milestones[milestone_idx], "progress": {"done": done_count, "total": len(milestones)}})
 
 @app.route('/api/center/<center_id>', methods=['DELETE'])
 def delete_center(center_id):
