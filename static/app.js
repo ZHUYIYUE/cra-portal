@@ -270,11 +270,31 @@ function renderCenters(centers, projectId) {
     }
     
     el.innerHTML = centers.map(c => `
-        <div style="display:flex;align-items:center;padding:10px;border-bottom:1px solid #eee;">
-            <span style="flex:1;"><strong>${escHtml(c.code)}</strong> - ${escHtml(c.name)}</span>
-            <button class="btn btn-text btn-sm" style="color:#e74c3c;" onclick="deleteCenter('${c.id}','${projectId}')"><i class="fas fa-trash"></i></button>
+        <div style="padding:12px;border-bottom:1px solid #eee;background:#fafafa;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="flex:1;">
+                    <strong>${escHtml(c.code)}</strong> - ${escHtml(c.name)}
+                    ${c.pi ? `<span style="color:#666;font-size:0.85em;margin-left:8px;"><i class="fas fa-user-md"></i> ${escHtml(c.pi)}</span>` : ''}
+                    ${c.department ? `<span style="color:#888;font-size:0.85em;"> | ${escHtml(c.department)}</span>` : ''}
+                </div>
+                <button class="btn btn-text btn-sm" onclick="toggleCenterNotes('${c.id}')"><i class="fas fa-chevron-down" id="icon-${c.id}"></i></button>
+            </div>
+            <div id="notes-${c.id}" style="display:none;margin-top:10px;padding:10px;background:#fff;border-radius:6px;font-size:0.9em;white-space:pre-line;color:#333;line-height:1.6;">${c.notes ? escHtml(c.notes) : '暂无备注信息'}</div>
         </div>
     `).join('');
+}
+
+function toggleCenterNotes(centerId) {
+    const el = document.getElementById('notes-' + centerId);
+    const icon = document.getElementById('icon-' + centerId);
+    if (!el) return;
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        if (icon) icon.className = 'fas fa-chevron-up';
+    } else {
+        el.style.display = 'none';
+        if (icon) icon.className = 'fas fa-chevron-down';
+    }
 }
 
 function showAddCenterModal(projectId) {
