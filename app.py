@@ -146,6 +146,12 @@ def get_all_tasks():
     if project_id:
         tasks = [t for t in tasks if t.get('project_id') == project_id]
     
+    # 补充中心名称
+    centers = read_json(CENTERS_FILE)
+    center_map = {c['id']: c.get('code', '') + ' ' + c.get('name', '') for c in centers}
+    for t in tasks:
+        t['center_name'] = center_map.get(t.get('center_id'), '')
+    
     # 按优先级排序：高 > 中 > 低
     priority_order = {'high': 0, 'medium': 1, 'low': 2}
     tasks.sort(key=lambda t: (not t.get('done'), priority_order.get(t.get('priority', 'medium'), 1)))
@@ -160,6 +166,7 @@ def create_task():
         "id": str(uuid.uuid4())[:8],
         "title": data.get('title', '未命名任务'),
         "project_id": data.get('project_id', ''),
+        "center_id": data.get('center_id', ''),
         "priority": data.get('priority', 'medium'),
         "due_date": data.get('due_date', ''),
         "done": False,
@@ -183,7 +190,7 @@ def update_task(task_id):
     data = request.json or {}
     task = tasks[idx]
     
-    for field in ['title', 'project_id', 'priority', 'due_date', 'done']:
+    for field in ['title', 'project_id', 'center_id', 'priority', 'due_date', 'done']:
         if field in data:
             task[field] = data[field]
     
@@ -220,11 +227,12 @@ def get_centers():
 def create_center():
     """创建新中心"""
     data = request.json or {}
+    # 支持前端传的 center_code / center_name，也接受后端格式 code / name
     center = {
         "id": str(uuid.uuid4())[:8],
         "project_id": data.get('project_id', ''),
-        "code": data.get('code', ''),
-        "name": data.get('name', '未命名中心'),
+        "code": data.get('code') or data.get('center_code') or '',
+        "name": data.get('name') or data.get('center_name') or '未命名中心',
         "created_at": datetime.now().isoformat(),
         "updated_at": datetime.now().isoformat()
     }

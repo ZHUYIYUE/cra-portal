@@ -130,37 +130,46 @@ async function loadDashboard(content) {
 
 // ========== 项目页面 ==========
 async function loadProjects(content) {
-    const res = await fetch('/api/projects');
-    const data = await res.json();
-    state.projects = data.projects || [];
+    // 显示加载状态
+    content.innerHTML = `<div class="card"><div class="card-header"><i class="fas fa-folder-open"></i> 项目管理</div></div><p style="color:#999;text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>`;
     
-    content.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-folder-open"></i> 项目管理
-                <button class="btn btn-primary" onclick="showCreateProject()" style="margin-left:auto;">
-                    <i class="fas fa-plus"></i> 新建项目
-                </button>
-            </div>
-        </div>
-        <div class="projects-grid" id="projectsGrid"></div>
-    `;
-
-    if (state.projects.length === 0) {
-        document.getElementById('projectsGrid').innerHTML = '<p style="color:#999;grid-column:1/-1;">暂无项目，点击上方按钮创建</p>';
-    } else {
-        document.getElementById('projectsGrid').innerHTML = state.projects.map(p => `
-            <div class="project-card" onclick="viewProject('${p.id}')">
-                <div style="display:flex;justify-content:space-between;align-items:start;">
-                    <h3><i class="fas fa-folder"></i> ${escHtml(p.name)}</h3>
-                    <button class="btn-icon" onclick="event.stopPropagation();confirmDeleteProject('${p.id}','${escHtml(p.name)}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+    try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        state.projects = data.projects || [];
+        
+        content.innerHTML = `
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-folder-open"></i> 项目管理
+                    <button class="btn btn-primary" onclick="showCreateProject()" style="margin-left:auto;">
+                        <i class="fas fa-plus"></i> 新建项目
+                    </button>
                 </div>
-                <p>编号: ${escHtml(p.code || '未设置')}</p>
-                <p>中心: ${p.center_count || 0} 个 | 待办: ${p.task_count || 0} 项</p>
-                <span class="status status-${p.stage === '进行中' ? 'active' : 'planning'}">${escHtml(p.stage)}</span>
+            </div>
+            <div class="projects-grid" id="projectsGrid"></div>
+        `;
+
+        if (state.projects.length === 0) {
+            document.getElementById('projectsGrid').innerHTML = '<p style="color:#999;grid-column:1/-1;">暂无项目，点击上方按钮创建</p>';
+        } else {
+            console.log('Projects loaded:', JSON.stringify(state.projects));
+            document.getElementById('projectsGrid').innerHTML = state.projects.map(p => `
+            <div class="project-card" onclick="viewProject('${p.id}')" style="background:white;border-radius:10px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+                <div style="display:flex;justify-content:space-between;align-items:start;">
+                    <h3 style="color:#2c3e50;margin-bottom:10px;font-size:1.1em;"><i class="fas fa-folder"></i> ${(p.name && p.name.trim()) ? escHtml(p.name) : '未命名项目'}</h3>
+                    <button class="btn-icon" onclick="event.stopPropagation();confirmDeleteProject('${p.id}','${escHtml(p.name || '未命名')}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                </div>
+                <p style="color:#666;font-size:0.9em;margin:4px 0;">编号: ${escHtml(p.code || '未设置')}</p>
+                <p style="color:#666;font-size:0.9em;margin:4px 0;">中心: ${p.center_count || 0} 个 | 待办: ${p.task_count || 0} 项</p>
+                <span class="status status-${p.stage === '进行中' ? 'active' : 'planning'}">${escHtml(p.stage || '未知阶段')}</span>
                 ${p.dbl_date ? `<br><small style="color:#e74c3c;">⚠️ DBL: ${escHtml(p.dbl_date)}</small>` : ''}
             </div>
         `).join('');
+        }
+    } catch (err) {
+        console.error('loadProjects error:', err);
+        content.innerHTML = `<div class="card"><div class="card-header"><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> 项目加载失败</div><p style="padding:20px;color:#e74c3c;">${err.message}</p><button class="btn btn-primary" onclick="loadProjects(content)">重试</button></div>`;
     }
 }
 
@@ -193,6 +202,16 @@ async function viewProject(projectId) {
 
         <div class="card">
             <div class="card-header">
+                <i class="fas fa-hospital"></i> 中心列表 (${p.center_count || 0} 家)
+                <button class="btn btn-primary btn-sm" onclick="showAddCenterModal('${projectId}')" style="margin-left:auto;">
+                    <i class="fas fa-plus"></i> 添加中心
+                </button>
+            </div>
+            <div id="projectCenters"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
                 <i class="fas fa-tasks"></i> 待办事项
                 <button class="btn btn-primary btn-sm" onclick="showAddTaskForProject('${projectId}')" style="margin-left:auto;">
                     <i class="fas fa-plus"></i> 新建
@@ -204,6 +223,85 @@ async function viewProject(projectId) {
     
     // 加载项目任务
     await loadProjectTasks(projectId);
+    // 加载项目中心
+    await loadProjectCenters(projectId);
+}
+
+async function loadProjectCenters(projectId) {
+    try {
+        const res = await fetch(`/api/centers?project_id=${projectId}`);
+        const data = await res.json();
+        if (data.success) {
+            renderCenters(data.centers, projectId);
+        } else {
+            document.getElementById('projectCenters').innerHTML = '<p style="color:#999;padding:10px;">暂无中心信息</p>';
+        }
+    } catch (err) {
+        console.error('加载中心失败:', err);
+    }
+}
+
+function renderCenters(centers, projectId) {
+    const el = document.getElementById('projectCenters');
+    if (!el) return;
+    
+    if (!centers || centers.length === 0) {
+        el.innerHTML = '<p style="color:#999;padding:10px;">暂无中心信息</p>';
+        return;
+    }
+    
+    el.innerHTML = centers.map(c => `
+        <div style="display:flex;align-items:center;padding:10px;border-bottom:1px solid #eee;">
+            <span style="flex:1;"><strong>${escHtml(c.code)}</strong> - ${escHtml(c.name)}</span>
+            <button class="btn btn-text btn-sm" style="color:#e74c3c;" onclick="deleteCenter('${c.id}','${projectId}')"><i class="fas fa-trash"></i></button>
+        </div>
+    `).join('');
+}
+
+function showAddCenterModal(projectId) {
+    const code = prompt('中心编号（如：01）:');
+    if (!code) return;
+    const name = prompt('中心名称:');
+    if (!name) return;
+    
+    fetch('/api/centers', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id: projectId, code: code, name: name})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            showToast('中心添加成功');
+            loadProjectCenters(projectId);
+        }
+    });
+}
+
+async function deleteCenter(centerId, projectId) {
+    if (!confirm('确定删除该中心？')) return;
+    try {
+        const res = await fetch(`/api/center/${centerId}`, {method: 'DELETE'});
+        const data = await res.json();
+        if (data.success) {
+            showToast('已删除');
+            loadProjectCenters(projectId);
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+function showToast(msg) {
+    const el = document.getElementById('toast');
+    if (!el) {
+        const t = document.createElement('div');
+        t.id = 'toast';
+        t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:6px;z-index:9999;opacity:0;transition:opacity 0.3s';
+        document.body.appendChild(t);
+    }
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
 async function loadProjectTasks(projectId) {
@@ -225,6 +323,7 @@ async function loadProjectTasks(projectId) {
             <div class="task-content" onclick="viewTaskDetail('${t.id}')">
                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                 <p class="task-meta">
+                    ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : ''}
                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                 </p>
@@ -277,6 +376,7 @@ async function loadTasks(content) {
                                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                                 <p class="task-meta">
                                     ${proj ? `<i class="fas fa-folder"></i> ${escHtml(proj.name)} ·` : ''}
+                                    ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
                                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : '无截止日期'}
                                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                                 </p>
@@ -641,70 +741,4 @@ function showError(msg) {
         `<div class="card"><p style="color:red;"><i class="fas fa-exclamation-circle"></i> ${msg}</p></div>`;
 }
 
-// ========== 中心管理 ==========
-
-async function loadProjectCenters(projectId) {
-    try {
-        const res = await fetch(`/api/centers?project_id=${projectId}`);
-        const data = await res.json();
-        if (data.success) {
-            renderCenters(data.centers, projectId);
-        }
-    } catch (err) {
-        console.error('加载中心失败:', err);
-    }
-}
-
-function renderCenters(centers, projectId) {
-    const container = document.getElementById('projectCenters');
-    if (!container) {
-        // 如果容器不存在，创建它
-        const detail = document.getElementById('projectDetail');
-        if (detail) {
-            detail.innerHTML += '<div id="projectCentersSection"><h3>中心列表</h3><div id="projectCenters"></div><button onclick="showAddCenterModal(\"' + projectId + '\")">+ 添加中心</button></div>';
-        }
-    }
-    
-    const el = document.getElementById('projectCenters');
-    if (!el) return;
-    
-    if (centers.length === 0) {
-        el.innerHTML = '<p style="color:#999">暂无中心，点击上方按钮添加</p>';
-        return;
-    }
-    
-    el.innerHTML = centers.map(c => `
-        <div style="border:1px solid #e0e0e0;padding:12px;margin:8px 0;border-radius:6px;cursor:pointer" onclick="showCenterDetail('${c.id}')">
-            <strong>${escapeHtml(c.code)}</strong> - ${escapeHtml(c.name)}
-        </div>
-    `).join('');
-}
-
-function showAddCenterModal(projectId) {
-    const code = prompt('中心编号（如：01）:');
-    if (!code) return;
-    const name = prompt('中心名称:');
-    if (!name) return;
-    
-    fetch('/api/centers', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({project_id: projectId, code: code, name: name})
-    }).then(r => r.json()).then(data => {
-        if (data.success) {
-            showToast('中心添加成功');
-            loadProjectCenters(projectId);
-        }
-    });
-}
-
-async function showCenterDetail(centerId) {
-    try {
-        const res = await fetch(`/api/centers?center_id=${centerId}`);
-        const data = await res.json();
-        // TODO: show center detail and its tasks
-        showToast('中心详情功能开发中');
-    } catch (err) {
-        console.error(err);
-    }
-}
+// showCenterDetail (placeholder)
