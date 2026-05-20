@@ -251,6 +251,8 @@ async function loadProjectCenters(projectId) {
         const res = await fetch(`/api/centers?project_id=${projectId}`);
         const data = await res.json();
         if (data.success) {
+            const el = document.getElementById('projectCenters');
+            if (el) el.dataset.projectId = projectId;
             renderCenters(data.centers, projectId);
         } else {
             document.getElementById('projectCenters').innerHTML = '<p style="color:#999;padding:10px;">暂无中心信息</p>';
@@ -269,23 +271,52 @@ function renderCenters(centers, projectId) {
         return;
     }
     
-    el.innerHTML = centers.map(c => `
+    el.innerHTML = centers.map(c => {
+        const ms = c.milestones || [];
+        const done = ms.filter(m => m.done).length;
+        const total = ms.length;
+        const pct = total > 0 ? Math.round(done / total * 100) : 0;
+        const barColor = pct === 100 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#3498db';
+        
+        return `
         <div style="padding:12px;border-bottom:1px solid #eee;background:#fafafa;">
-            <div style="display:flex;align-items:center;justify-content:space-between;">
+            <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCenterDetail('${c.id}')">
                 <div style="flex:1;">
                     <strong>${escHtml(c.code)}</strong> - ${escHtml(c.name)}
                     ${c.pi ? `<span style="color:#666;font-size:0.85em;margin-left:8px;"><i class="fas fa-user-md"></i> ${escHtml(c.pi)}</span>` : ''}
                     ${c.department ? `<span style="color:#888;font-size:0.85em;"> | ${escHtml(c.department)}</span>` : ''}
                 </div>
-                <button class="btn btn-text btn-sm" onclick="toggleCenterNotes('${c.id}')"><i class="fas fa-chevron-down" id="icon-${c.id}"></i></button>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    ${total > 0 ? `<span style="font-size:0.8em;color:#666;">${done}/${total}</span>
+                    <div style="width:60px;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden;">
+                        <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s;"></div>
+                    </div>` : ''}
+                    <i class="fas fa-chevron-down" id="icon-${c.id}" style="color:#999;font-size:0.8em;"></i>
+                </div>
             </div>
-            <div id="notes-${c.id}" style="display:none;margin-top:10px;padding:10px;background:#fff;border-radius:6px;font-size:0.9em;white-space:pre-line;color:#333;line-height:1.6;">${c.notes ? escHtml(c.notes) : '暂无备注信息'}</div>
-        </div>
-    `).join('');
+            <div id="detail-${c.id}" style="display:none;margin-top:10px;">
+                ${total > 0 ? `
+                <div style="background:#fff;border-radius:8px;padding:8px 12px;">
+                    ${ms.map((m, i) => {
+                        const isOverdue = !m.done && m.date && new Date(m.date) < new Date();
+                        const dateStr = m.date ? m.date.slice(5) : '';
+                        return `
+                        <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;gap:8px;" >
+                            <input type="checkbox" ${m.done ? 'checked' : ''} 
+                                style="width:18px;height:18px;cursor:pointer;accent-color:#27ae60;"
+                                onclick="event.stopPropagation(); toggleMilestone('${c.id}', ${i}, this.checked)" />
+                            <span style="flex:1;${m.done ? 'text-decoration:line-through;color:#999;' : isOverdue ? 'color:#e74c3c;font-weight:600;' : 'color:#333;'}">${escHtml(m.name)}</span>
+                            <span style="font-size:0.8em;color:${isOverdue ? '#e74c3c' : '#888'};white-space:nowrap;">${dateStr}${isOverdue ? ' ⚠️' : ''}${m.done && m.actual_date ? ' ✅'+m.actual_date.slice(5) : ''}</span>
+                        </div>`;
+                    }).join('')}
+                </div>` : '<p style="color:#999;font-size:0.9em;padding:8px;">暂无里程碑</p>'}
+            </div>
+        </div>`;
+    }).join('');
 }
 
-function toggleCenterNotes(centerId) {
-    const el = document.getElementById('notes-' + centerId);
+function toggleCenterDetail(centerId) {
+    const el = document.getElementById('detail-' + centerId);
     const icon = document.getElementById('icon-' + centerId);
     if (!el) return;
     if (el.style.display === 'none') {
@@ -294,6 +325,23 @@ function toggleCenterNotes(centerId) {
     } else {
         el.style.display = 'none';
         if (icon) icon.className = 'fas fa-chevron-down';
+    }
+}
+
+async function toggleMilestone(centerId, idx, done) {
+    try {
+        const res = await fetch(`/api/center/${centerId}/milestone/${idx}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({done: done})
+        });
+        const data = await res.json();
+        if (data.success) {
+            const currentProjectId = document.getElementById('projectCenters')?.dataset?.projectId;
+            if (currentProjectId) loadProjectCenters(currentProjectId);
+        }
+    } catch(e) {
+        console.error('更新里程碑失败:', e);
     }
 }
 
