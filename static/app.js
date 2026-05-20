@@ -21,14 +21,33 @@ function initApp() {
     });
     
     document.getElementById('menuToggle').addEventListener('click', function() {
-        document.getElementById('sidebar').classList.toggle('show');
+        const sb = document.getElementById('sidebar');
+        const ov = document.getElementById('sidebarOverlay');
+        sb.classList.toggle('show');
+        ov.classList.toggle('show', sb.classList.contains('show'));
     });
-    
+
+    // 点击导航项后自动关闭侧边栏（移动端）
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function() {
+            if (window.innerWidth <= 768) closeSidebar();
+        });
+    });
+
     // 点击模态框外部关闭
     document.getElementById('modalOverlay').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
     });
-    
+}
+
+// 关闭侧边栏（移动端）
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('show');
+    document.getElementById('sidebarOverlay').classList.remove('show');
+}
+
+// 页面初始化
+function init() {
     navigateTo('dashboard');
 }
 
