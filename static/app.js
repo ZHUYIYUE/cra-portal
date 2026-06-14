@@ -1166,7 +1166,7 @@ async function loadStartup(content) {
 }
 
 function showAddStartupTaskModal() {
-    showModal(`
+    openModal(`
         <h3><i class="fas fa-plus"></i> 添加启动任务</h3>
         <div class="form-group">
             <label>任务名称 *</label>
@@ -1230,7 +1230,7 @@ async function executeStartupTask(taskId, taskName) {
     const data = await res.json();
     const pendingTasks = (data.tasks || []).filter(t => !t.done);
     
-    showModal(`
+    openModal(`
         <h3><i class="fas fa-play"></i> 执行启动任务：${escHtml(taskName)}</h3>
         <p style="color:#666;margin-bottom:16px;">执行完成后，记录你的感受和耗时</p>
         
