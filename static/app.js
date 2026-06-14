@@ -1174,13 +1174,6 @@ async function submitUpdateTask(e, taskId) {
     return false;
 }
 
-// 工具函数：转义HTML属性
-function escAttr(str) {
-    if (!str) return '';
-    return String(str).replace(/'/g, "&#39;").replace(/"/g, '&quot;');
-}
-
-
 // 查看任务详情
 function viewTaskDetail(taskId) {
     const task = state.tasks.find(t => t.id === taskId);
