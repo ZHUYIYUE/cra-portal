@@ -460,6 +460,7 @@ async function loadProjectTasks(projectId) {
                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                 </p>
             </div>
+            <button class="btn-icon" onclick="event.stopPropagation();showEditTask('${t.id}')" title="编辑"><i class="fas fa-edit" style="color:#3498db;"></i></button>
             <button class="btn-icon" onclick="event.stopPropagation();deleteTaskById('${t.id}')" title="删除"><i class="fas fa-trash-alt" style="color:#ccc;"></i></button>
         </div>
     `).join('');
@@ -533,6 +534,7 @@ async function loadTasks(content) {
                                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                                 </p>
                             </div>
+                            <button class="btn-icon" onclick="event.stopPropagation();showEditTask('${t.id}')" title="编辑"><i class="fas fa-edit" style="color:#3498db;"></i></button>
                             <button class="btn-icon" onclick="event.stopPropagation();deleteTaskById('${t.id}')" title="删除"><i class="fas fa-trash-alt" style="color:#ccc;"></i></button>
                         </div>
                     `;
@@ -1032,22 +1034,152 @@ async function toggleTaskDone(taskId, newDone) {
     }
 }
 
-// 删除任务
-async function deleteTaskById(taskId) {
-    if (!confirm('确定删除这个待办事项？')) return;
+// 编辑任务
+async function showEditTask(taskId) {
+    const task = state.tasks.find(t => t.id === taskId);
+    if (!task) { alert('未找到该任务'); return; }
     
-    const res = await fetch(`/api/task/${taskId}`, {method:'DELETE'});
-    const result = await res.json();
+    const projectOptions = `<option value="">不关联项目</option>` +
+        (state.projects || []).map(p => `<option value="${p.id}" ${p.id === task.project_id ? 'selected' : ''}>${escHtml(p.name)}</option>`).join('');
     
-    if (result.success) {
-        const el = document.getElementById(`task-${taskId}`);
-        if (el) el.remove();
-        
-        if (state.currentProject) {
-            await loadProjectTasks(state.currentProject.id);
-        }
+    const abilityOptions = Object.keys(ABILITY_LABELS).map(k => 
+        `<option value="${k}" ${k === (task.ability_type || 'execution') ? 'selected' : ''}>${ABILITY_ICONS[k]} ${ABILITY_LABELS[k]}</option>`
+    ).join('');
+    
+    openModal(`
+        <div class="modal-header"><h3><i class="fas fa-edit"></i> 编辑待办</h3></div>
+        <form onsubmit="return submitUpdateTask(event, '${task.id}')">
+            <div class="form-group">
+                <label>任务标题 *</label>
+                <input type="text" name="title" id="edit-task-title" value="${escAttr(task.title || '')}" required autofocus>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>所属项目</label>
+                    <select name="project_id" id="edit-task-project" onchange="onTaskProjectChangeForEdit(this.value, '${task.center_id || ''}')">
+                        ${projectOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>所属中心</label>
+                    <select name="center_id" id="edit-task-center-select">
+                        <option value="">加载中...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>能力分类</label>
+                    <select name="ability_type">
+                        ${abilityOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>优先级</label>
+                    <select name="priority">
+                        <option value="high" ${task.priority === 'high' ? 'selected' : ''}>🔴 高</option>
+                        <option value="medium" ${(task.priority || 'medium') === 'medium' ? 'selected' : ''}>🟡 中</option>
+                        <option value="low" ${task.priority === 'low' ? 'selected' : ''}>🟢 低</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>截止日期</label>
+                <input type="date" name="due_date" id="edit-task-due-date" value="${task.due_date || ''}">
+            </div>
+            <div class="form-group">
+                <label><input type="checkbox" name="done" id="edit-task-done" ${task.done ? 'checked' : ''}> 标记为已完成</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 保存修改</button>
+                <button type="button" class="btn" onclick="closeModal()">取消</button>
+            </div>
+        </form>
+    `);
+    
+    // 如果已有项目，加载中心列表
+    if (task.project_id) {
+        await loadCentersForEdit(task.project_id, task.center_id);
     }
 }
+
+// 加载中心列表（编辑用）
+async function loadCentersForEdit(projectId, selectedCenterId) {
+    const select = document.getElementById('edit-task-center-select');
+    if (!select) return;
+    
+    if (!projectId) {
+        select.innerHTML = '<option value="">不关联中心</option>';
+        return;
+    }
+    
+    try {
+        const res = await fetch(`/api/centers?project_id=${projectId}`);
+        const data = await res.json();
+        const centers = data.centers || [];
+        
+        select.innerHTML = '<option value="">不关联中心</option>' +
+            centers.map(c => `<option value="${c.id}" ${c.id === selectedCenterId ? 'selected' : ''}>${escHtml(c.name)}</option>`).join('');
+    } catch(e) {
+        select.innerHTML = '<option value="">加载失败</option>';
+    }
+}
+
+// 项目切换时重新加载中心（编辑用）
+async function onTaskProjectChangeForEdit(projectId, currentCenterId) {
+    await loadCentersForEdit(projectId, currentCenterId);
+}
+
+// 提交更新
+async function submitUpdateTask(e, taskId) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+    
+    const payload = {
+        title: formData.get('title'),
+        project_id: formData.get('project_id') || null,
+        center_id: formData.get('center_id') || null,
+        ability_type: formData.get('ability_type'),
+        priority: formData.get('priority'),
+        due_date: formData.get('due_date') || null,
+        done: form.querySelector('[name=done]').checked
+    };
+    
+    try {
+        const res = await fetch(`/api/task/${taskId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await res.json();
+        
+        if (result.success) {
+            closeModal();
+            showToast('✅ 已保存');
+            // 重新加载当前页面任务列表
+            if (state.currentPage === 'tasks') {
+                const content = document.getElementById('content');
+                if (content) await loadTasks(content);
+            } else if (state.currentProject) {
+                await loadProjectTasks(state.currentProject.id);
+            }
+        } else {
+            alert('❌ 保存失败: ' + (result.error || '未知错误'));
+        }
+    } catch(e) {
+        alert('❌ 保存失败: ' + e.message);
+    }
+    
+    return false;
+}
+
+// 工具函数：转义HTML属性
+function escAttr(str) {
+    if (!str) return '';
+    return String(str).replace(/'/g, "&#39;").replace(/"/g, '&quot;');
+}
+
 
 // 查看任务详情
 function viewTaskDetail(taskId) {
