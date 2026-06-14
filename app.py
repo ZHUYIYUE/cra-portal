@@ -333,17 +333,20 @@ def get_recommendations():
     # - communication(沟通协调): 打电话/催进度/邮件沟通，需精力高
     # - planning(规划整理): 理里程碑/排访视计划，需平静度高
     # - execution(执行归档): 填表/归档/跑流程，两个要求都不高
-    # - learning_review(学习回顾): 复盘/学SOP，精力低但平静时刚好
+    # 逻辑：中或以上不做限制，只有低时才约束
+    # - 精力低：不做深度专注和沟通（需要脑力和反应速度）
+    # - 平静度低：不做深度专注和规划（需要清晰思路）
+    # - 两个都低：建议休息
     energy_calm_map = {
-        ('high', 'high'):   ['deep_focus', 'planning'],           # 最佳状态：深度工作+规划
-        ('high', 'medium'): ['communication', 'execution'],       # 精力旺盛：沟通+执行
-        ('high', 'low'):    ['execution', 'communication'],       # 烦躁但有力气：先做执行类，避免深度工作
-        ('medium', 'high'): ['planning', 'learning_review'],      # 平静：适合规划和复盘
-        ('medium', 'medium'): ['execution', 'communication'],     # 普通状态：执行+沟通
-        ('medium', 'low'): ['execution'],                         # 一般但烦躁：只做执行类
-        ('low', 'high'):   ['learning_review', 'planning'],      # 累但平静：学习回顾+轻规划
-        ('low', 'medium'): ['learning_review', 'execution'],      # 累：学习或轻执行
-        ('low', 'low'):    [],                                     # 状态差：建议休息
+        ('high', 'high'):   ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
+        ('high', 'medium'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
+        ('high', 'low'):    ['communication', 'execution'],                # 烦躁：避免深度工作和规划
+        ('medium', 'high'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
+        ('medium', 'medium'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
+        ('medium', 'low'): ['execution', 'communication'],              # 烦躁：避免深度工作和规划
+        ('low', 'high'):   ['planning', 'execution', 'learning_review'], # 累：不做深度专注和沟通
+        ('low', 'medium'): ['execution', 'learning_review', 'planning'], # 累：不做深度专注和沟通
+        ('low', 'low'):    [],                                           # 建议休息
     }
     recommended_types = energy_calm_map.get((energy, calmness), ['execution'])
     recommended = [t for t in pending if t.get('ability_type') in recommended_types]
