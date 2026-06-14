@@ -312,9 +312,10 @@ def get_status():
 @app.route('/api/status', methods=['POST'])
 def set_status():
     data = request.json or {}
+    current = read_json(DATA_DIR / 'status.json') or {}
     status = {
-        "energy": data.get('energy', 'medium'),
-        "calmness": data.get('calmness', 'medium'),
+        "energy": data.get('energy', current.get('energy', 'medium')),
+        "calmness": data.get('calmness', current.get('calmness', 'medium')),
         "updated_at": datetime.now().isoformat()
     }
     write_json(DATA_DIR / 'status.json', status)
