@@ -908,19 +908,25 @@ function renderTaskForm(projectId, title) {
             <div class="form-row">
                 <div class="form-group">
                     <label>所属项目</label>
-                    <select name="project_id">
+                    <select name="project_id" id="task-project-select" onchange="onTaskProjectChange(this.value)">
                         <option value="">不关联项目</option>
                         ${(state.projects || []).map(p => `<option value="${p.id}" ${p.id===projectId?'selected':''}>${escHtml(p.name)}</option>`).join('')}
                     </select>
                 </div>
+                <div class="form-group">
+                    <label>所属中心</label>
+                    <select name="center_id" id="task-center-select" disabled>
+                        <option value="">先选项目</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
                 <div class="form-group">
                     <label>能力分类</label>
                     <select name="ability_type">
                         ${Object.keys(ABILITY_LABELS).map(k => `<option value="${k}">${ABILITY_ICONS[k]} ${ABILITY_LABELS[k]} — ${ABILITY_DESC[k]}</option>`).join('')}
                     </select>
                 </div>
-            </div>
-            <div class="form-row">
                 <div class="form-group">
                     <label>优先级</label>
                     <select name="priority">
@@ -929,10 +935,10 @@ function renderTaskForm(projectId, title) {
                         <option value="low">🟢 低</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>截止日期</label>
-                    <input type="date" name="due_date">
-                </div>
+            </div>
+            <div class="form-group">
+                <label>截止日期</label>
+                <input type="date" name="due_date">
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 创建</button>
@@ -940,6 +946,35 @@ function renderTaskForm(projectId, title) {
             </div>
         </form>
     `);
+    // 如果已有项目选中，自动加载其中心
+    if (projectId) {
+        onTaskProjectChange(projectId);
+    }
+}
+
+async function onTaskProjectChange(projectId) {
+    const select = document.getElementById('task-center-select');
+    if (!projectId) {
+        select.innerHTML = '<option value="">先选项目</option>';
+        select.disabled = true;
+        return;
+    }
+    select.disabled = true;
+    select.innerHTML = '<option value="">加载中…</option>';
+    try {
+        const res = await fetch(`/api/centers?project_id=${projectId}`);
+        const data = await res.json();
+        const centers = data.centers || [];
+        if (centers.length === 0) {
+            select.innerHTML = '<option value="">该项目暂无中心</option>';
+        } else {
+            select.innerHTML = '<option value="">不关联中心</option>' +
+                centers.map(c => `<option value="${c.id}">${escHtml(c.code)} - ${escHtml(c.name)}</option>`).join('');
+            select.disabled = false;
+        }
+    } catch (e) {
+        select.innerHTML = '<option value="">加载失败</option>';
+    }
 }
 
 async function submitCreateTask(e) {
@@ -948,6 +983,7 @@ async function submitCreateTask(e) {
     const data = {
         title: form.title.value,
         project_id: form.project_id.value,
+        center_id: form.center_id.value,
         ability_type: form.ability_type.value,
         priority: form.priority.value,
         due_date: form.due_date.value
