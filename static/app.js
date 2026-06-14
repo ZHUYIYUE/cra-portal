@@ -1,4 +1,4 @@
-// CRA Portal 前端逻辑 - 完整版 + 状态推荐
+// CRA Portal 前端逻辑 - v2026-06-14-23
 
 // 全局状态
 const state = {
