@@ -631,7 +631,7 @@ async function loadRecommend(content) {
             <div class="ability-desc-list">
                 ${recommendedTypes.map(t => {
                     const stars = recData.recommend_ranks && recData.recommend_ranks[t]
-                        ? '⭐'.repeat(recData.recommend_ranks[t])
+                        ? '⭐'.repeat(4 - recData.recommend_ranks[t])
                         : '';
                     return `
                     <div class="ability-desc-item">
@@ -673,7 +673,8 @@ function renderRecTask(t, recommended) {
     const priorityLabel = {high:'高',medium:'中',low:'低'}[t.priority] || t.priority;
     const priorityClass = `priority-${t.priority || 'medium'}`;
     const rank = t.recommend_rank;
-    const stars = rank ? '⭐'.repeat(rank) : '';
+    // rank 1=最推荐→3星, 2=次推荐→2星, 3=可做→1星
+    const stars = rank ? '⭐'.repeat(4 - rank) : '';
     
     return `
         <div class="rec-task-item ${recommended ? 'rec-recommended' : 'rec-other'}">
