@@ -335,7 +335,119 @@ body {
     border-top: 1px solid #eee;
 }
 
-/* ====== 加载动画 ====== */
+/* ====== 能力分类标签 ====== */
+.ability-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.78em;
+    font-weight: 500;
+}
+.ability-deep_focus { background: #e8f0fe; color: #1a73e8; }
+.ability-communication { background: #fce4ec; color: #c62828; }
+.ability-planning { background: #fff8e1; color: #f9a825; }
+.ability-execution { background: #e8f5e9; color: #2e7d32; }
+.ability-learning_review { background: #f3e5f5; color: #7b1fa2; }
+
+/* ====== 能力概览卡片 ====== */
+.ability-overview {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.ability-card {
+    background: white;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+.ability-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.ability-icon { font-size: 1.5em; }
+.ability-name { font-size: 0.85em; display: block; color: #2c3e50; margin-top: 4px; }
+.ability-count { font-size: 1.2em; font-weight: bold; color: #e74c3c; display: block; margin-top: 2px; }
+
+/* ====== 状态选择器 ====== */
+.status-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+.status-dimension h4 {
+    color: #2c3e50;
+    font-size: 1em;
+    margin-bottom: 10px;
+}
+.status-options {
+    display: flex;
+    gap: 10px;
+}
+.status-opt {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.status-opt:hover { border-color: #3498db; }
+.status-opt.active { border-color: #3498db; background: #e8f4fd; }
+.status-emoji { font-size: 1.8em; display: block; }
+.status-level { font-size: 1em; font-weight: bold; display: block; margin-top: 4px; }
+.status-opt small { color: #7f8c8d; display: block; margin-top: 4px; font-size: 0.75em; }
+
+/* ====== 推荐能力描述 ====== */
+.ability-desc-list {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.ability-desc-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 10px 14px;
+    flex: 1;
+    min-width: 120px;
+}
+.ability-icon-big { font-size: 1.5em; }
+.ability-desc-item strong { display: block; color: #2c3e50; margin-top: 4px; }
+.ability-desc-item small { color: #7f8c8d; display: block; margin-top: 2px; }
+
+/* ====== 推荐任务列表 ====== */
+.rec-task-list { margin-top: 12px; }
+.rec-task-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+.rec-recommended { background: #e8f5e9; border: 1px solid #c8e6c9; }
+.rec-other { background: #f5f5f5; border: 1px solid #e0e0e0; }
+.rec-task-ability {
+    font-size: 0.85em;
+    white-space: nowrap;
+    min-width: 80px;
+}
+.rec-task-info strong { color: #2c3e50; display: block; }
+.rec-task-info small { color: #7f8c8d; }
+
+@media (max-width: 768px) {
+    .status-selector { grid-template-columns: 1fr; }
+    .ability-overview { grid-template-columns: repeat(3, 1fr); }
+    .status-options { flex-wrap: wrap; }
+}
+@media (max-width: 480px) {
+    .ability-overview { grid-template-columns: repeat(2, 1fr); }
+}
 .loading {
     display: none;
     position: fixed;

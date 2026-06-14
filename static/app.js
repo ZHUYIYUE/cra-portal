@@ -1,4 +1,4 @@
-// CRA Portal 前端逻辑 - 完整版
+// CRA Portal 前端逻辑 - 完整版 + 状态推荐
 
 // 全局状态
 const state = {
@@ -7,7 +7,46 @@ const state = {
     tasks: []
 };
 
-// 初始化
+// ========== 能力分类定义 ==========
+
+const ABILITY_LABELS = {
+    deep_focus: '深度专注',
+    communication: '沟通协调',
+    planning: '规划整理',
+    execution: '执行归档',
+    learning_review: '学习回顾'
+};
+
+const ABILITY_ICONS = {
+    deep_focus: '🧠',
+    communication: '💬',
+    planning: '📋',
+    execution: '⚙️',
+    learning_review: '📖'
+};
+
+const ABILITY_DESC = {
+    deep_focus: '写监查报告、审TMF、写合同初稿、做决策',
+    communication: '和PI电话、和CRC确认进度、回复邮件、伦理沟通',
+    planning: 'PPT制作、整理思路、规划里程碑、列清单',
+    execution: '整理eTMF、打印归档、填表、文件质控回复',
+    learning_review: '复盘监查经验、阅读方案更新、总结问题'
+};
+
+const ENERGY_DESC = {
+    high: '精力充沛，脑子清醒',
+    medium: '一般状态，能坐住',
+    low: '很累/犯困'
+};
+
+const CALM_DESC = {
+    high: '内心平静',
+    medium: '有点事但不影响',
+    low: '焦虑/烦躁'
+};
+
+// ========== 初始化 ==========
+
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
 });
@@ -27,31 +66,24 @@ function initApp() {
         ov.classList.toggle('show', sb.classList.contains('show'));
     });
 
-    // 点击导航项后自动关闭侧边栏（移动端）
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', function() {
             if (window.innerWidth <= 768) closeSidebar();
         });
     });
 
-    // 点击模态框外部关闭
     document.getElementById('modalOverlay').addEventListener('click', function(e) {
         if (e.target === this) closeModal();
     });
 }
 
-// 关闭侧边栏（移动端）
 function closeSidebar() {
     document.getElementById('sidebar').classList.remove('show');
     document.getElementById('sidebarOverlay').classList.remove('show');
 }
 
-// 页面初始化
-function init() {
-    navigateTo('dashboard');
-}
-
 // ========== 页面导航 ==========
+
 async function navigateTo(page) {
     state.currentPage = page;
     
@@ -59,7 +91,7 @@ async function navigateTo(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
     
-    const titles = { dashboard: '总览', projects: '项目', tasks: '待办事项' };
+    const titles = { dashboard: '总览', projects: '项目', tasks: '待办事项', recommend: '状态推荐' };
     document.getElementById('pageTitle').textContent = titles[page] || '总览';
     
     showLoading();
@@ -79,10 +111,12 @@ async function loadPage(page) {
         case 'dashboard': await loadDashboard(content); break;
         case 'projects': await loadProjects(content); break;
         case 'tasks': await loadTasks(content); break;
+        case 'recommend': await loadRecommend(content); break;
     }
 }
 
 // ========== 总览页面 ==========
+
 async function loadDashboard(content) {
     const [statsRes, projectsRes] = await Promise.all([
         fetch('/api/stats'), fetch('/api/projects')
@@ -148,8 +182,8 @@ async function loadDashboard(content) {
 }
 
 // ========== 项目页面 ==========
+
 async function loadProjects(content) {
-    // 显示加载状态
     content.innerHTML = `<div class="card"><div class="card-header"><i class="fas fa-folder-open"></i> 项目管理</div></div><p style="color:#999;text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>`;
     
     try {
@@ -172,7 +206,6 @@ async function loadProjects(content) {
         if (state.projects.length === 0) {
             document.getElementById('projectsGrid').innerHTML = '<p style="color:#999;grid-column:1/-1;">暂无项目，点击上方按钮创建</p>';
         } else {
-            console.log('Projects loaded:', JSON.stringify(state.projects));
             document.getElementById('projectsGrid').innerHTML = state.projects.map(p => `
             <div class="project-card" onclick="viewProject('${p.id}')" style="background:white;border-radius:10px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
                 <div style="display:flex;justify-content:space-between;align-items:start;">
@@ -193,6 +226,7 @@ async function loadProjects(content) {
 }
 
 // ========== 查看项目详情 ==========
+
 async function viewProject(projectId) {
     const res = await fetch(`/api/project/${projectId}`);
     const data = await res.json();
@@ -240,9 +274,7 @@ async function viewProject(projectId) {
         </div>
     `;
     
-    // 加载项目任务
     await loadProjectTasks(projectId);
-    // 加载项目中心
     await loadProjectCenters(projectId);
 }
 
@@ -254,8 +286,6 @@ async function loadProjectCenters(projectId) {
             const el = document.getElementById('projectCenters');
             if (el) el.dataset.projectId = projectId;
             renderCenters(data.centers, projectId);
-        } else {
-            document.getElementById('projectCenters').innerHTML = '<p style="color:#999;padding:10px;">暂无中心信息</p>';
         }
     } catch (err) {
         console.error('加载中心失败:', err);
@@ -411,6 +441,7 @@ async function loadProjectTasks(projectId) {
                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                 <p class="task-meta">
                     ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
+                    <span class="ability-tag ability-${t.ability_type || 'execution'}">${ABILITY_ICONS[t.ability_type || 'execution']} ${ABILITY_LABELS[t.ability_type || 'execution']}</span> ·
                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : ''}
                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                 </p>
@@ -421,6 +452,7 @@ async function loadProjectTasks(projectId) {
 }
 
 // ========== 待办事项页面 ==========
+
 async function loadTasks(content) {
     const res = await fetch('/api/tasks');
     const data = await res.json();
@@ -429,10 +461,17 @@ async function loadTasks(content) {
     const projects = state.projects.length > 0 ? state.projects : 
         (await (await fetch('/api/projects')).json()).projects || [];
     
-    // 统计
     const total = state.tasks.length;
     const done = state.tasks.filter(t => t.done).length;
     const pending = total - done;
+    
+    // 按能力类型分组统计
+    const abilityGroups = {};
+    state.tasks.filter(t => !t.done).forEach(t => {
+        const at = t.ability_type || 'execution';
+        if (!abilityGroups[at]) abilityGroups[at] = 0;
+        abilityGroups[at]++;
+    });
     
     content.innerHTML = `
         <div class="card">
@@ -443,6 +482,17 @@ async function loadTasks(content) {
                     <i class="fas fa-plus"></i> 新建待办
                 </button>
             </div>
+        </div>
+
+        <!-- 能力分组概览 -->
+        <div class="ability-overview">
+            ${Object.keys(ABILITY_LABELS).map(at => `
+                <div class="ability-card ability-${at}" onclick="filterByAbility('${at}')">
+                    <span class="ability-icon">${ABILITY_ICONS[at]}</span>
+                    <span class="ability-name">${ABILITY_LABELS[at]}</span>
+                    <span class="ability-count">${abilityGroups[at] || 0}</span>
+                </div>
+            `).join('')}
         </div>
 
         <!-- 筛选栏 -->
@@ -457,13 +507,14 @@ async function loadTasks(content) {
                 state.tasks.map(t => {
                     const proj = projects.find(p => p.id === t.project_id);
                     return `
-                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}">
+                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-ability="${t.ability_type || 'execution'}">
                             <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTaskDone('${t.id}', ${!t.done})">
                             <div class="task-content" onclick="viewTaskDetail('${t.id}')">
                                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                                 <p class="task-meta">
                                     ${proj ? `<i class="fas fa-folder"></i> ${escHtml(proj.name)} ·` : ''}
                                     ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
+                                    <span class="ability-tag ability-${t.ability_type || 'execution'}">${ABILITY_ICONS[t.ability_type || 'execution']} ${ABILITY_LABELS[t.ability_type || 'execution']}</span> ·
                                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : '无截止日期'}
                                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
                                 </p>
@@ -477,6 +528,14 @@ async function loadTasks(content) {
     `;
 }
 
+function filterByAbility(abilityType) {
+    document.querySelectorAll('#taskList .task-item').forEach(item => {
+        if (item.dataset.ability === abilityType) item.style.display = '';
+        else item.style.display = 'none';
+    });
+    // 取消筛选时双击恢复
+}
+
 function filterTasks(btn, filter) {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -487,6 +546,136 @@ function filterTasks(btn, filter) {
         else if (filter === 'pending') item.style.display = done ? 'none' : '';
         else if (filter === 'done') item.style.display = done ? '' : 'none';
     });
+}
+
+// ========== 状态推荐页面 ==========
+
+async function loadRecommend(content) {
+    const [statusRes, recRes] = await Promise.all([
+        fetch('/api/status'), fetch('/api/recommendations')
+    ]);
+    const statusData = await statusRes.json();
+    const recData = await recRes.json();
+    
+    const currentEnergy = statusData.energy || 'medium';
+    const currentCalmness = statusData.calmness || 'medium';
+    const recommended = recData.recommended_tasks || [];
+    const other = recData.other_tasks || [];
+    const recommendedTypes = recData.recommended_types || [];
+    
+    const energyLevels = ['high', 'medium', 'low'];
+    const calmLevels = ['high', 'medium', 'low'];
+    const energyEmoji = { high: '⚡', medium: '🔋', low: '🪫' };
+    const calmEmoji = { high: '🧘', medium: '🌊', low: '🔥' };
+    const energyLabel = { high: '高', medium: '中', low: '低' };
+    const calmLabel = { high: '高', medium: '中', low: '低' };
+
+    content.innerHTML = `
+        <div class="card">
+            <div class="card-header"><i class="fas fa-brain"></i> 当前状态</div>
+            <p style="color:#7f8c8d;font-size:0.9em;margin-bottom:16px;">选择你现在的身体精力和内心平静度，系统会推荐最适合你当前状态的任务类型</p>
+            
+            <div class="status-selector">
+                <div class="status-dimension">
+                    <h4><i class="fas fa-bolt"></i> 身体精力</h4>
+                    <div class="status-options">
+                        ${energyLevels.map(l => `
+                            <div class="status-opt ${currentEnergy === l ? 'active' : ''}" onclick="selectEnergy('${l}')">
+                                <span class="status-emoji">${energyEmoji[l]}</span>
+                                <span class="status-level">${energyLabel[l]}</span>
+                                <small>${ENERGY_DESC[l]}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="status-dimension">
+                    <h4><i class="fas fa-heart"></i> 内心平静度</h4>
+                    <div class="status-options">
+                        ${calmLevels.map(l => `
+                            <div class="status-opt ${currentCalmness === l ? 'active' : ''}" onclick="selectCalmness('${l}')">
+                                <span class="status-emoji">${calmEmoji[l]}</span>
+                                <span class="status-level">${calmLabel[l]}</span>
+                                <small>${CALM_DESC[l]}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        ${recommendedTypes.length > 0 ? `
+        <div class="card">
+            <div class="card-header" style="color:#27ae60;">
+                <i class="fas fa-check-circle"></i> ✅ 推荐现在做的事
+                <span style="font-size:0.85em;color:#666;margin-left:10px;">${recommendedTypes.map(t => ABILITY_ICONS[t] + ' ' + ABILITY_LABELS[t]).join(' · ')}</span>
+            </div>
+            <div class="ability-desc-list">
+                ${recommendedTypes.map(t => `
+                    <div class="ability-desc-item">
+                        <span class="ability-icon-big">${ABILITY_ICONS[t]}</span>
+                        <strong>${ABILITY_LABELS[t]}</strong>
+                        <small>${ABILITY_DESC[t]}</small>
+                    </div>
+                `).join('')}
+            </div>
+            ${recommended.length > 0 ? `
+                <div class="rec-task-list">
+                    ${recommended.map(t => renderRecTask(t, true)).join('')}
+                </div>
+            ` : '<p style="color:#999;padding:10px;">当前推荐类型下没有待办任务，可以创建一个</p>'}
+        </div>` : `
+        <div class="card">
+            <div class="card-header" style="color:#e74c3c;">
+                <i class="fas fa-bed"></i> 🛌 现在适合休息
+            </div>
+            <p style="padding:20px;color:#666;">你当前身体精力低且内心不平静，强行工作只会更低效。<br>建议：<strong>休息30分钟</strong>，做点放松的事（散步、冥想、听音乐），状态回升后再回来。</p>
+        </div>`}
+
+        ${other.length > 0 ? `
+        <div class="card">
+            <div class="card-header" style="color:#999;">
+                <i class="fas fa-clock"></i> 其他待办（当前状态不太适合）
+            </div>
+            <div class="rec-task-list" style="opacity:0.6;">
+                ${other.map(t => renderRecTask(t, false)).join('')}
+            </div>
+        </div>` : ''}
+    `;
+}
+
+function renderRecTask(t, recommended) {
+    const abilityIcon = ABILITY_ICONS[t.ability_type || 'execution'];
+    const abilityLabel = ABILITY_LABELS[t.ability_type || 'execution'];
+    const priorityLabel = {high:'高',medium:'中',low:'低'}[t.priority] || t.priority;
+    const priorityClass = `priority-${t.priority || 'medium'}`;
+    
+    return `
+        <div class="rec-task-item ${recommended ? 'rec-recommended' : 'rec-other'}">
+            <div class="rec-task-ability">${abilityIcon} ${abilityLabel}</div>
+            <div class="rec-task-info">
+                <strong>${escHtml(t.title)}</strong>
+                <small>${t.center_name ? escHtml(t.center_name) + ' · ' : ''}${t.due_date || '无截止日期'} · <span class="task-priority ${priorityClass}">${priorityLabel}</span></small>
+            </div>
+        </div>
+    `;
+}
+
+async function selectEnergy(level) {
+    await fetch('/api/status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({energy: level})
+    });
+    navigateTo('recommend');
+}
+
+async function selectCalmness(level) {
+    await fetch('/api/status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({calmness: level})
+    });
+    navigateTo('recommend');
 }
 
 // ========== 模态框操作 ==========
@@ -697,6 +886,14 @@ function renderTaskForm(projectId, title) {
                     </select>
                 </div>
                 <div class="form-group">
+                    <label>能力分类</label>
+                    <select name="ability_type">
+                        ${Object.keys(ABILITY_LABELS).map(k => `<option value="${k}">${ABILITY_ICONS[k]} ${ABILITY_LABELS[k]} — ${ABILITY_DESC[k]}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
                     <label>优先级</label>
                     <select name="priority">
                         <option value="high">🔴 高</option>
@@ -704,10 +901,10 @@ function renderTaskForm(projectId, title) {
                         <option value="low">🟢 低</option>
                     </select>
                 </div>
-            </div>
-            <div class="form-group">
-                <label>截止日期</label>
-                <input type="date" name="due_date">
+                <div class="form-group">
+                    <label>截止日期</label>
+                    <input type="date" name="due_date">
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 创建</button>
@@ -723,6 +920,7 @@ async function submitCreateTask(e) {
     const data = {
         title: form.title.value,
         project_id: form.project_id.value,
+        ability_type: form.ability_type.value,
         priority: form.priority.value,
         due_date: form.due_date.value
     };
@@ -737,7 +935,6 @@ async function submitCreateTask(e) {
     if (result.success) {
         closeModal();
         alert('✅ 待办创建成功！');
-        // 如果在项目详情页，刷新项目；否则刷新待办页
         if (state.currentProject && data.project_id === state.currentProject.id) {
             viewProject(state.currentProject.id);
         } else {
@@ -758,7 +955,6 @@ async function toggleTaskDone(taskId, newDone) {
     const result = await res.json();
     
     if (result.success) {
-        // 更新UI
         const el = document.getElementById(`task-${taskId}`);
         if (el) {
             el.classList.toggle('task-done', newDone);
@@ -783,22 +979,24 @@ async function deleteTaskById(taskId) {
         const el = document.getElementById(`task-${taskId}`);
         if (el) el.remove();
         
-        // 如果在项目详情页也刷新一下
         if (state.currentProject) {
             await loadProjectTasks(state.currentProject.id);
         }
     }
 }
 
-// 查看任务详情（简单弹窗）
+// 查看任务详情
 function viewTaskDetail(taskId) {
     const task = state.tasks.find(t => t.id === taskId);
     if (!task) return;
     
     const proj = (state.projects || []).find(p => p.id === task.project_id);
+    const atLabel = ABILITY_LABELS[task.ability_type || 'execution'];
+    const atIcon = ABILITY_ICONS[task.ability_type || 'execution'];
     alert(
         `📋 ${task.title}\n\n` +
         `项目：${proj ? proj.name : '未关联'}\n` +
+        `能力：${atIcon} ${atLabel}\n` +
         `优先级：${{high:'高',medium:'中',low:'低'}[task.priority]||task.priority}\n` +
         `截止：${task.due_date || '未设置'}\n` +
         `状态：${task.done ? '✅ 已完成' : '⏳ 进行中'}\n\n` +
@@ -827,5 +1025,3 @@ function showError(msg) {
     document.getElementById('pageContent').innerHTML =
         `<div class="card"><p style="color:red;"><i class="fas fa-exclamation-circle"></i> ${msg}</p></div>`;
 }
-
-// showCenterDetail (placeholder)

@@ -168,6 +168,7 @@ def create_task():
         "project_id": data.get('project_id', ''),
         "center_id": data.get('center_id', ''),
         "priority": data.get('priority', 'medium'),
+        "ability_type": data.get('ability_type', 'execution'),
         "due_date": data.get('due_date', ''),
         "done": False,
         "created_at": datetime.now().isoformat()
@@ -190,7 +191,7 @@ def update_task(task_id):
     data = request.json or {}
     task = tasks[idx]
     
-    for field in ['title', 'project_id', 'center_id', 'priority', 'due_date', 'done']:
+    for field in ['title', 'project_id', 'center_id', 'priority', 'ability_type', 'due_date', 'done']:
         if field in data:
             task[field] = data[field]
     
@@ -302,6 +303,58 @@ def delete_center(center_id):
     write_json(TASKS_FILE, tasks)
     
     return jsonify({"success": True})
+
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    status_file = DATA_DIR / 'status.json'
+    return jsonify(read_json(status_file) or {"energy": "medium", "calmness": "medium"})
+
+@app.route('/api/status', methods=['POST'])
+def set_status():
+    data = request.json or {}
+    status = {
+        "energy": data.get('energy', 'medium'),
+        "calmness": data.get('calmness', 'medium'),
+        "updated_at": datetime.now().isoformat()
+    }
+    write_json(DATA_DIR / 'status.json', status)
+    return jsonify({"success": True, "status": status})
+
+@app.route('/api/recommendations', methods=['GET'])
+def get_recommendations():
+    status = read_json(DATA_DIR / 'status.json') or {"energy": "medium", "calmness": "medium"}
+    tasks = read_json(TASKS_FILE)
+    pending = [t for t in tasks if not t.get('done')]
+    energy = status.get('energy', 'medium')
+    calmness = status.get('calmness', 'medium')
+    energy_calm_map = {
+        ('high', 'high'): ['deep_focus'],
+        ('high', 'medium'): ['deep_focus', 'communication'],
+        ('high', 'low'): ['communication'],
+        ('medium', 'high'): ['planning', 'deep_focus'],
+        ('medium', 'medium'): ['planning', 'execution', 'communication'],
+        ('medium', 'low'): ['execution'],
+        ('low', 'high'): ['learning_review', 'planning'],
+        ('low', 'medium'): ['execution', 'learning_review'],
+        ('low', 'low'): [],
+    }
+    recommended_types = energy_calm_map.get((energy, calmness), ['execution'])
+    recommended = [t for t in pending if t.get('ability_type') in recommended_types]
+    other = [t for t in pending if t.get('ability_type') not in recommended_types]
+    return jsonify({
+        "success": True,
+        "status": status,
+        "recommended_types": recommended_types,
+        "recommended_tasks": recommended,
+        "other_tasks": other,
+        "ability_labels": {
+            "deep_focus": "深度专注",
+            "communication": "沟通协调",
+            "planning": "规划整理",
+            "execution": "执行归档",
+            "learning_review": "学习回顾"
+        }
+    })
 
 # ========== 统计 API ==========
 
