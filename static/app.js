@@ -626,17 +626,21 @@ async function loadRecommend(content) {
         ${recommendedTypes.length > 0 ? `
         <div class="card">
             <div class="card-header" style="color:#27ae60;">
-                <i class="fas fa-check-circle"></i> ✅ 推荐现在做的事
-                <span style="font-size:0.85em;color:#666;margin-left:10px;">${recommendedTypes.map(t => ABILITY_ICONS[t] + ' ' + ABILITY_LABELS[t]).join(' · ')}</span>
+                <i class="fas fa-check-circle"></i> ✅ 推荐任务
             </div>
             <div class="ability-desc-list">
-                ${recommendedTypes.map(t => `
+                ${recommendedTypes.map(t => {
+                    const stars = recData.recommend_ranks && recData.recommend_ranks[t]
+                        ? '⭐'.repeat(recData.recommend_ranks[t])
+                        : '';
+                    return `
                     <div class="ability-desc-item">
                         <span class="ability-icon-big">${ABILITY_ICONS[t]}</span>
                         <strong>${ABILITY_LABELS[t]}</strong>
+                        ${stars ? `<span style="margin-left:4px;color:#f39c12;">${stars}</span>` : ''}
                         <small>${ABILITY_DESC[t]}</small>
                     </div>
-                `).join('')}
+                `}).join('')}
             </div>
             ${recommended.length > 0 ? `
                 <div class="rec-task-list">
@@ -668,10 +672,12 @@ function renderRecTask(t, recommended) {
     const abilityLabel = ABILITY_LABELS[t.ability_type || 'execution'];
     const priorityLabel = {high:'高',medium:'中',low:'低'}[t.priority] || t.priority;
     const priorityClass = `priority-${t.priority || 'medium'}`;
+    const rank = t.recommend_rank;
+    const stars = rank ? '⭐'.repeat(rank) : '';
     
     return `
         <div class="rec-task-item ${recommended ? 'rec-recommended' : 'rec-other'}">
-            <div class="rec-task-ability">${abilityIcon} ${abilityLabel}</div>
+            <div class="rec-task-ability">${stars} ${abilityIcon} ${abilityLabel}</div>
             <div class="rec-task-info">
                 <strong>${escHtml(t.title)}</strong>
                 <small>${t.center_name ? escHtml(t.center_name) + ' · ' : ''}${t.due_date || '无截止日期'} · <span class="task-priority ${priorityClass}">${priorityLabel}</span></small>

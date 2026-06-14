@@ -333,21 +333,36 @@ def get_recommendations():
     # - communication(沟通协调): 打电话/催进度/邮件沟通，需精力高
     # - planning(规划整理): 理里程碑/排访视计划，需平静度高
     # - execution(执行归档): 填表/归档/跑流程，两个要求都不高
-    # 逻辑：中或以上不做限制，只有低时才约束
-    # - 精力低：不做深度专注和沟通（需要脑力和反应速度）
-    # - 平静度低：不做深度专注和规划（需要清晰思路）
-    # - 两个都低：建议休息
+    # 推荐度排名：1=最推荐，2=次推荐，3=可做但不最佳
+    # 高+高：深度专注效率最高，其次是规划
+    # 高+中：沟通协作最顺，深度专注也不错
+    # 高+低：执行归档最稳，沟通协作也可
+    # 中+高：规划整理最合适，学习回顾也不错
+    # 中+中：执行归档最稳，沟通协作也可
+    # 中+低：执行归档最稳，学习回顾也可
+    # 低+高：学习回顾最合适，规划整理也可
+    # 低+中：执行归档最稳，学习回顾也可
+    # 低+低：都不推荐，建议休息
     energy_calm_map = {
-        ('high', 'high'):   ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
-        ('high', 'medium'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
-        ('high', 'low'):    ['communication', 'execution'],                # 烦躁：避免深度工作和规划
-        ('medium', 'high'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
-        ('medium', 'medium'): ['deep_focus', 'communication', 'planning', 'execution', 'learning_review'],
-        ('medium', 'low'): ['execution', 'communication'],              # 烦躁：避免深度工作和规划
-        ('low', 'high'):   ['planning', 'execution', 'learning_review'], # 累：不做深度专注和沟通
-        ('low', 'medium'): ['execution', 'learning_review', 'planning'], # 累：不做深度专注和沟通
-        ('low', 'low'):    [],                                           # 建议休息
+        ('high', 'high'):   {'deep_focus': 1, 'planning': 2, 'communication': 3, 'execution': 3, 'learning_review': 3},
+        ('high', 'medium'): {'communication': 1, 'deep_focus': 2, 'execution': 3, 'planning': 3, 'learning_review': 3},
+        ('high', 'low'):    {'execution': 1, 'communication': 2, 'planning': 3, 'learning_review': 3},
+        ('medium', 'high'): {'planning': 1, 'learning_review': 2, 'deep_focus': 3, 'communication': 3, 'execution': 3},
+        ('medium', 'medium'): {'execution': 1, 'communication': 2, 'planning': 3, 'deep_focus': 3, 'learning_review': 3},
+        ('medium', 'low'): {'execution': 1, 'learning_review': 2, 'communication': 3},
+        ('low', 'high'):   {'learning_review': 1, 'planning': 2, 'execution': 3},
+        ('low', 'medium'): {'execution': 1, 'learning_review': 2, 'planning': 3},
+        ('low', 'low'):    {},
     }
+    # 转成按推荐度排序的列表
+    sorted_types = sorted(energy_calm_map.get((energy, calmness), {}).items(), key=lambda x: x[1])
+    recommended_types = [t[0] for t in sorted_types]
+    
+    # 给每个任务加上推荐度排名
+    for t in recommended:
+        t['recommend_rank'] = energy_calm_map.get((energy, calmness), {}).get(t.get('ability_type'), None)
+    for t in other:
+        t['recommend_rank'] = energy_calm_map.get((energy, calmness), {}).get(t.get('ability_type'), None)
     recommended_types = energy_calm_map.get((energy, calmness), ['execution'])
     recommended = [t for t in pending if t.get('ability_type') in recommended_types]
     other = [t for t in pending if t.get('ability_type') not in recommended_types]
@@ -355,6 +370,7 @@ def get_recommendations():
         "success": True,
         "status": status,
         "recommended_types": recommended_types,
+        "recommend_ranks": {t[0]: t[1] for t in sorted_types},
         "recommended_tasks": recommended,
         "other_tasks": other,
         "ability_labels": {
