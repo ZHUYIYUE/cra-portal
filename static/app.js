@@ -45,6 +45,19 @@ const CALM_DESC = {
     low: '焦虑/烦躁'
 };
 
+// 状态组合说明：解释为什么推荐这些任务类型
+const STATUS_EXPLANATION = {
+    'high,high':   '⚡🧘 最佳状态！精力充沛且内心平静，适合做需要深度思考和高质量输出的工作。',
+    'high,medium': '⚡🌊 精力旺盛，内心基本平静。适合对外沟通和需要体力的执行工作。',
+    'high,low':    '⚡🔥 精力好但内心烦躁。不适合深度工作，先做执行类任务，等平静些再处理复杂问题。',
+    'medium,high': '🔋🧘 精力一般但内心平静。适合规划和复盘，不需要太多体力但需要清晰思路。',
+    'medium,medium': '🔋🌊 普通状态。做执行和沟通类工作，避免需要高度专注的深度工作。',
+    'medium,low':   '🔋🔥 精力一般且有点烦躁。只做简单的执行类任务，避免复杂沟通。',
+    'low,high':    '🪫🧘 身体累了但内心平静。适合学习回顾和轻量规划，不要做需要快速反应的工作。',
+    'low,medium':  '🪫🌊 累，状态一般。看看学习资料或做点简单的执行任务，别勉强。',
+    'low,low':      '🪫🔥 状态很差。强行工作只会更低效，建议休息30分钟再继续。'
+};
+
 // ========== 初始化 ==========
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -601,6 +614,13 @@ async function loadRecommend(content) {
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- 状态说明 -->
+        <div class="card" style="background:#f8f9fa;border-left:4px solid #3498db;">
+            <p style="margin:0;color:#2c3e50;font-size:0.95em;">
+                ${STATUS_EXPLANATION[`${currentEnergy},${currentCalmness}`] || ''}
+            </p>
         </div>
 
         ${recommendedTypes.length > 0 ? `
