@@ -355,22 +355,23 @@ def get_recommendations():
         ('low', 'low'):    {},
     }
     # 转成按推荐度排序的列表
-    sorted_types = sorted(energy_calm_map.get((energy, calmness), {}).items(), key=lambda x: x[1])
-    recommended_types = [t[0] for t in sorted_types]
+    rank_map = energy_calm_map.get((energy, calmness), {'execution': 1})
+    recommended_types = sorted(rank_map.keys(), key=lambda x: rank_map[x])
+    
+    # 分离推荐和其他任务
+    recommended = [t for t in pending if t.get('ability_type') in rank_map]
+    other = [t for t in pending if t.get('ability_type') not in rank_map]
     
     # 给每个任务加上推荐度排名
     for t in recommended:
-        t['recommend_rank'] = energy_calm_map.get((energy, calmness), {}).get(t.get('ability_type'), None)
+        t['recommend_rank'] = rank_map.get(t.get('ability_type'), None)
     for t in other:
-        t['recommend_rank'] = energy_calm_map.get((energy, calmness), {}).get(t.get('ability_type'), None)
-    recommended_types = energy_calm_map.get((energy, calmness), ['execution'])
-    recommended = [t for t in pending if t.get('ability_type') in recommended_types]
-    other = [t for t in pending if t.get('ability_type') not in recommended_types]
+        t['recommend_rank'] = rank_map.get(t.get('ability_type'), None)
     return jsonify({
         "success": True,
         "status": status,
         "recommended_types": recommended_types,
-        "recommend_ranks": {t[0]: t[1] for t in sorted_types},
+        "recommend_ranks": rank_map,
         "recommended_tasks": recommended,
         "other_tasks": other,
         "ability_labels": {
