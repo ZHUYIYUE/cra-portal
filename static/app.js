@@ -1094,7 +1094,7 @@ async function loadStartup(content) {
                                 ${t.description ? `<br><small style="color:#666;">${escHtml(t.description)}</small>` : ''}
                             </div>
                             <div class="startup-task-actions">
-                                <button class="btn btn-small" onclick="executeStartupTask('${t.id}', '${escHtml(t.name)}')">
+                                <button class="btn btn-small" onclick='executeStartupTask("${t.id}", "${escAttr(t.name)}")'>
                                     <i class="fas fa-play"></i> 执行
                                 </button>
                                 <button class="btn btn-small btn-danger" onclick="deleteStartupTask('${t.id}')">
