@@ -465,6 +465,81 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ====== 启动任务页面 ====== */
+.startup-tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.startup-task-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.startup-task-info {
+    flex: 1;
+}
+
+.startup-task-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.logs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.log-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid #3498db;
+}
+
+.log-main {
+    flex: 1;
+}
+
+.log-time {
+    color: #999;
+    font-size: 0.85em;
+}
+
+.stats-table-wrapper {
+    overflow-x: auto;
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.stats-table th,
+.stats-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.stats-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+}
+
+.stats-table tbody tr:hover {
+    background: #f8f9fa;
+}
+
 /* ====== 响应式 ====== */
 @media (max-width: 768px) {
     .sidebar { transform: translateX(-100%); }

@@ -104,7 +104,7 @@ async function navigateTo(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
     
-    const titles = { dashboard: '总览', projects: '项目', tasks: '待办事项', recommend: '状态推荐' };
+    const titles = { dashboard: '总览', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务' };
     document.getElementById('pageTitle').textContent = titles[page] || '总览';
     
     showLoading();
@@ -125,6 +125,7 @@ async function loadPage(page) {
         case 'projects': await loadProjects(content); break;
         case 'tasks': await loadTasks(content); break;
         case 'recommend': await loadRecommend(content); break;
+        case 'startup': await loadStartup(content); break;
     }
 }
 
@@ -1051,4 +1052,264 @@ function hideLoading() { document.getElementById('loading').classList.remove('sh
 function showError(msg) {
     document.getElementById('pageContent').innerHTML =
         `<div class="card"><p style="color:red;"><i class="fas fa-exclamation-circle"></i> ${msg}</p></div>`;
+}
+
+// ========== 启动任务页面 ==========
+
+async function loadStartup(content) {
+    const [tasksRes, logsRes, statsRes, allTasksRes] = await Promise.all([
+        fetch('/api/startup-tasks'),
+        fetch('/api/startup-logs'),
+        fetch('/api/startup-stats'),
+        fetch('/api/tasks')
+    ]);
+    const tasksData = await tasksRes.json();
+    const logsData = await logsRes.json();
+    const statsData = await statsRes.json();
+    const allTasksData = await allTasksRes.json();
+    
+    const startupTasks = tasksData.tasks || [];
+    const logs = logsData.logs || [];
+    const stats = statsData.stats || [];
+    const targetTasks = (allTasksData.tasks || []).filter(t => !t.done);
+    
+    content.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-rocket"></i> 启动任务库
+                <button class="btn btn-primary" style="float:right;" onclick="showAddStartupTaskModal()">
+                    <i class="fas fa-plus"></i> 添加启动任务
+                </button>
+            </div>
+            <p style="color:#666;margin-bottom:16px;">
+                启动任务用于在面临困难/抗拒任务时，快速获得胜任感和掌控感，消除杏仁核的恐惧反应。
+            </p>
+            <div class="startup-tasks-list">
+                ${startupTasks.length === 0 ? 
+                    '<p style="color:#999;">还没有启动任务，点击右上角添加一个吧</p>' :
+                    startupTasks.map(t => `
+                        <div class="startup-task-item">
+                            <div class="startup-task-info">
+                                <strong>${escHtml(t.name)}</strong>
+                                ${t.description ? `<br><small style="color:#666;">${escHtml(t.description)}</small>` : ''}
+                            </div>
+                            <div class="startup-task-actions">
+                                <button class="btn btn-small" onclick="executeStartupTask('${t.id}', '${escHtml(t.name)}')">
+                                    <i class="fas fa-play"></i> 执行
+                                </button>
+                                <button class="btn btn-small btn-danger" onclick="deleteStartupTask('${t.id}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><i class="fas fa-history"></i> 执行日志</div>
+            ${logs.length === 0 ? 
+                '<p style="color:#999;">还没有执行记录</p>' :
+                `<div class="logs-list">
+                    ${logs.slice(0, 10).map(log => `
+                        <div class="log-item">
+                            <div class="log-main">
+                                <strong>${escHtml(log.startup_task_name)}</strong>
+                                ${log.target_task_name ? `<span style="color:#666;">→ ${escHtml(log.target_task_name)}</span>` : ''}
+                                <br>
+                                <small>
+                                    平静度: ${'😌'.repeat(log.calmness_before)} → ${'😌'.repeat(log.calmness_after)} 
+                                    (${log.calmness_after > log.calmness_before ? '✅ +' : log.calmness_after < log.calmness_before ? '⚠️ ' : '➖ '}${log.calmness_after - log.calmness_before})
+                                    &nbsp;|&nbsp; 耗时: ${log.duration_minutes}分钟
+                                </small>
+                            </div>
+                            <div class="log-time">
+                                <small>${formatDate(log.executed_at)}</small>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>`
+            }
+        </div>
+
+        ${stats.length > 0 ? `
+            <div class="card">
+                <div class="card-header"><i class="fas fa-chart-line"></i> 效果分析</div>
+                <div class="stats-table-wrapper">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>启动任务</th>
+                                <th>执行次数</th>
+                                <th>平均平静度变化</th>
+                                <th>改善率</th>
+                                <th>平均耗时</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${stats.map(s => `
+                                <tr>
+                                    <td>${escHtml(s.task_name)}</td>
+                                    <td>${s.count}次</td>
+                                    <td>${s.avg_calmness_before} → ${s.avg_calmness_after} (${s.avg_improvement > 0 ? '+' : ''}${s.avg_improvement})</td>
+                                    <td>${s.improvement_rate}%</td>
+                                    <td>${s.avg_duration}分钟</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ` : ''}
+    `;
+}
+
+function showAddStartupTaskModal() {
+    showModal(`
+        <h3><i class="fas fa-plus"></i> 添加启动任务</h3>
+        <div class="form-group">
+            <label>任务名称 *</label>
+            <input type="text" id="startupTaskName" placeholder="例如：整理CRA Portal待办">
+        </div>
+        <div class="form-group">
+            <label>描述</label>
+            <textarea id="startupTaskDesc" placeholder="简短描述这个启动任务的作用"></textarea>
+        </div>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveStartupTask()">保存</button>
+        </div>
+    `);
+}
+
+async function saveStartupTask() {
+    const name = document.getElementById('startupTaskName').value.trim();
+    const description = document.getElementById('startupTaskDesc').value.trim();
+    
+    if (!name) {
+        alert('请输入任务名称');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/startup-tasks', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, description})
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeModal();
+            navigateTo('startup');
+        } else {
+            alert('保存失败');
+        }
+    } catch (e) {
+        alert('保存失败');
+    }
+}
+
+async function deleteStartupTask(taskId) {
+    if (!confirm('确定删除这个启动任务吗？')) return;
+    
+    try {
+        const res = await fetch(`/api/startup-tasks/${taskId}`, {method: 'DELETE'});
+        const data = await res.json();
+        if (data.success) {
+            navigateTo('startup');
+        }
+    } catch (e) {
+        alert('删除失败');
+    }
+}
+
+async function executeStartupTask(taskId, taskName) {
+    // 获取当前待办任务列表用于选择目标任务
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    const pendingTasks = (data.tasks || []).filter(t => !t.done);
+    
+    showModal(`
+        <h3><i class="fas fa-play"></i> 执行启动任务：${escHtml(taskName)}</h3>
+        <p style="color:#666;margin-bottom:16px;">执行完成后，记录你的感受和耗时</p>
+        
+        <div class="form-group">
+            <label>关联目标任务（可选）</label>
+            <select id="targetTaskSelect">
+                <option value="">无</option>
+                ${pendingTasks.map(t => `<option value="${t.id}" data-name="${escHtml(t.title)}">${escHtml(t.title)}</option>`).join('')}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>执行前平静度（1=很烦躁，2=有点烦，3=平静）</label>
+            <select id="calmnessBefore">
+                <option value="1">1 - 很烦躁</option>
+                <option value="2" selected>2 - 有点烦</option>
+                <option value="3">3 - 平静</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>执行后平静度</label>
+            <select id="calmnessAfter">
+                <option value="1">1 - 很烦躁</option>
+                <option value="2" selected>2 - 有点烦</option>
+                <option value="3">3 - 平静</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>耗时（分钟）</label>
+            <input type="number" id="durationMinutes" value="15" min="1">
+        </div>
+        
+        <div class="form-group">
+            <label>备注（可选）</label>
+            <textarea id="logNotes" placeholder="记录一下执行过程中的感受"></textarea>
+        </div>
+        
+        <div class="modal-actions">
+            <button class="btn" onclick="closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="saveStartupLog('${taskId}', '${escHtml(taskName)}')">保存记录</button>
+        </div>
+    `);
+}
+
+async function saveStartupLog(startupTaskId, startupTaskName) {
+    const targetSelect = document.getElementById('targetTaskSelect');
+    const targetTaskId = targetSelect.value;
+    const targetTaskName = targetSelect.options[targetSelect.selectedIndex].dataset.name || '';
+    
+    const calmnessBefore = parseInt(document.getElementById('calmnessBefore').value);
+    const calmnessAfter = parseInt(document.getElementById('calmnessAfter').value);
+    const durationMinutes = parseInt(document.getElementById('durationMinutes').value) || 15;
+    const notes = document.getElementById('logNotes').value.trim();
+    
+    try {
+        const res = await fetch('/api/startup-logs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                startup_task_id: startupTaskId,
+                startup_task_name: startupTaskName,
+                target_task_id: targetTaskId,
+                target_task_name: targetTaskName,
+                calmness_before: calmnessBefore,
+                calmness_after: calmnessAfter,
+                duration_minutes: durationMinutes,
+                notes
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeModal();
+            navigateTo('startup');
+        } else {
+            alert('保存失败');
+        }
+    } catch (e) {
+        alert('保存失败');
+    }
 }

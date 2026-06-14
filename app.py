@@ -20,6 +20,8 @@ DATA_DIR = Path('data')
 PROJECTS_FILE = DATA_DIR / 'projects.json'
 TASKS_FILE = DATA_DIR / 'tasks.json'
 CENTERS_FILE = DATA_DIR / 'centers.json'
+STARTUP_TASKS_FILE = DATA_DIR / 'startup_tasks.json'
+STARTUP_LOGS_FILE = DATA_DIR / 'startup_logs.json'
 
 # ========== 数据初始化 ==========
 
@@ -30,6 +32,10 @@ def ensure_data_dir():
         write_json(PROJECTS_FILE, [])
     if not TASKS_FILE.exists():
         write_json(TASKS_FILE, [])
+    if not STARTUP_TASKS_FILE.exists():
+        write_json(STARTUP_TASKS_FILE, [])
+    if not STARTUP_LOGS_FILE.exists():
+        write_json(STARTUP_LOGS_FILE, [])
 
 def read_json(path):
     """读取JSON文件"""
@@ -382,6 +388,137 @@ def get_recommendations():
             "learning_review": "学习回顾"
         }
     })
+
+# ========== 启动任务 API ==========
+
+@app.route('/api/startup-tasks', methods=['GET'])
+def get_startup_tasks():
+    """获取所有启动任务"""
+    tasks = read_json(STARTUP_TASKS_FILE)
+    return jsonify({"success": True, "tasks": tasks})
+
+@app.route('/api/startup-tasks', methods=['POST'])
+def create_startup_task():
+    """创建启动任务"""
+    data = request.json or {}
+    task = {
+        "id": str(uuid.uuid4())[:8],
+        "name": data.get('name', '未命名启动任务'),
+        "description": data.get('description', ''),
+        "created_at": datetime.now().isoformat()
+    }
+    tasks = read_json(STARTUP_TASKS_FILE)
+    tasks.append(task)
+    write_json(STARTUP_TASKS_FILE, tasks)
+    return jsonify({"success": True, "task": task})
+
+@app.route('/api/startup-tasks/<task_id>', methods=['PUT'])
+def update_startup_task(task_id):
+    """更新启动任务"""
+    tasks = read_json(STARTUP_TASKS_FILE)
+    idx = next((i for i, t in enumerate(tasks) if t['id'] == task_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "启动任务不存在"}), 404
+    data = request.json or {}
+    for field in ['name', 'description']:
+        if field in data:
+            tasks[idx][field] = data[field]
+    write_json(STARTUP_TASKS_FILE, tasks)
+    return jsonify({"success": True, "task": tasks[idx]})
+
+@app.route('/api/startup-tasks/<task_id>', methods=['DELETE'])
+def delete_startup_task(task_id):
+    """删除启动任务"""
+    tasks = read_json(STARTUP_TASKS_FILE)
+    tasks = [t for t in tasks if t['id'] != task_id]
+    write_json(STARTUP_TASKS_FILE, tasks)
+    return jsonify({"success": True})
+
+@app.route('/api/startup-logs', methods=['GET'])
+def get_startup_logs():
+    """获取执行日志"""
+    logs = read_json(STARTUP_LOGS_FILE)
+    # 按时间倒序
+    logs.sort(key=lambda x: x.get('executed_at', ''), reverse=True)
+    return jsonify({"success": True, "logs": logs})
+
+@app.route('/api/startup-logs', methods=['POST'])
+def create_startup_log():
+    """记录一次启动任务执行"""
+    data = request.json or {}
+    log = {
+        "id": str(uuid.uuid4())[:8],
+        "startup_task_id": data.get('startup_task_id', ''),
+        "startup_task_name": data.get('startup_task_name', ''),
+        "target_task_id": data.get('target_task_id', ''),
+        "target_task_name": data.get('target_task_name', ''),
+        "calmness_before": data.get('calmness_before', 2),
+        "calmness_after": data.get('calmness_after', 2),
+        "duration_minutes": data.get('duration_minutes', 0),
+        "notes": data.get('notes', ''),
+        "executed_at": datetime.now().isoformat()
+    }
+    logs = read_json(STARTUP_LOGS_FILE)
+    logs.append(log)
+    write_json(STARTUP_LOGS_FILE, logs)
+    return jsonify({"success": True, "log": log})
+
+@app.route('/api/startup-stats', methods=['GET'])
+def get_startup_stats():
+    """统计分析：哪些启动任务效果最好"""
+    logs = read_json(STARTUP_LOGS_FILE)
+    tasks = read_json(STARTUP_TASKS_FILE)
+    
+    if not logs:
+        return jsonify({"success": True, "stats": []})
+    
+    # 按启动任务分组统计
+    task_stats = {}
+    for log in logs:
+        task_id = log.get('startup_task_id')
+        if not task_id:
+            continue
+        if task_id not in task_stats:
+            task_stats[task_id] = {
+                'task_id': task_id,
+                'task_name': log.get('startup_task_name', '未知'),
+                'count': 0,
+                'total_calmness_before': 0,
+                'total_calmness_after': 0,
+                'total_duration': 0,
+                'calmness_improvement': []
+            }
+        task_stats[task_id]['count'] += 1
+        task_stats[task_id]['total_calmness_before'] += log.get('calmness_before', 2)
+        task_stats[task_id]['total_calmness_after'] += log.get('calmness_after', 2)
+        task_stats[task_id]['total_duration'] += log.get('duration_minutes', 0)
+        improvement = log.get('calmness_after', 2) - log.get('calmness_before', 2)
+        task_stats[task_id]['calmness_improvement'].append(improvement)
+    
+    # 计算平均值和改善率
+    result = []
+    for task_id, stats in task_stats.items():
+        avg_before = stats['total_calmness_before'] / stats['count']
+        avg_after = stats['total_calmness_after'] / stats['count']
+        avg_improvement = sum(stats['calmness_improvement']) / stats['count']
+        avg_duration = stats['total_duration'] / stats['count']
+        improvement_rate = len([x for x in stats['calmness_improvement'] if x > 0]) / stats['count'] * 100
+        
+        result.append({
+            'task_id': task_id,
+            'task_name': stats['task_name'],
+            'count': stats['count'],
+            'avg_calmness_before': round(avg_before, 2),
+            'avg_calmness_after': round(avg_after, 2),
+            'avg_improvement': round(avg_improvement, 2),
+            'avg_duration': round(avg_duration, 1),
+            'improvement_rate': round(improvement_rate, 1)
+        })
+    
+    # 按平均改善排序
+    result.sort(key=lambda x: x['avg_improvement'], reverse=True)
+    
+    return jsonify({"success": True, "stats": result})
 
 # ========== 统计 API ==========
 
