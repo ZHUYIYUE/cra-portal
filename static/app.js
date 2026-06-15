@@ -473,8 +473,10 @@ async function loadTasks(content) {
     const data = await res.json();
     state.tasks = data.tasks || [];
     
-    const projects = state.projects.length > 0 ? state.projects : 
-        (await (await fetch('/api/projects')).json()).projects || [];
+    if (state.projects.length === 0) {
+        const projData = await (await fetch('/api/projects')).json();
+        state.projects = projData.projects || [];
+    }
     
     const total = state.tasks.length;
     const done = state.tasks.filter(t => t.done).length;
