@@ -522,7 +522,7 @@ async function loadTasks(content) {
         <div class="task-list" id="taskList">
             ${state.tasks.length === 0 ? '<p style="color:#999;padding:20px;">暂无待办事项</p>' :
                 state.tasks.map(t => {
-                    const proj = projects.find(p => p.id === t.project_id);
+                    const proj = state.projects.find(p => p.id === t.project_id);
                     return `
                         <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-ability="${t.ability_type || 'execution'}">
                             <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTaskDone('${t.id}', ${!t.done})">
