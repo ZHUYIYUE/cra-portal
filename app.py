@@ -26,6 +26,7 @@ TASKS_FILE = DATA_DIR / 'tasks.json'
 CENTERS_FILE = DATA_DIR / 'centers.json'
 STARTUP_TASKS_FILE = DATA_DIR / 'startup_tasks.json'
 STARTUP_LOGS_FILE = DATA_DIR / 'startup_logs.json'
+FINDINGS_FILE = DATA_DIR / 'findings.json'
 
 # ========== 数据初始化 ==========
 
@@ -70,6 +71,7 @@ def ensure_data_dir():
     pull_file_from_github('data/centers.json', CENTERS_FILE)
     pull_file_from_github('data/startup_tasks.json', STARTUP_TASKS_FILE)
     pull_file_from_github('data/startup_logs.json', STARTUP_LOGS_FILE)
+    pull_file_from_github('data/findings.json', FINDINGS_FILE)
     
     # 仍然拉取失败的文件初始化为空数组
     if not PROJECTS_FILE.exists():
@@ -82,6 +84,8 @@ def ensure_data_dir():
         write_json(STARTUP_TASKS_FILE, [])
     if not STARTUP_LOGS_FILE.exists():
         write_json(STARTUP_LOGS_FILE, [])
+    if not FINDINGS_FILE.exists():
+        write_json(FINDINGS_FILE, [])
 
 def read_json(path):
     """读取JSON文件"""
@@ -624,6 +628,124 @@ def get_startup_stats():
     result.sort(key=lambda x: x['avg_improvement'], reverse=True)
     
     return jsonify({"success": True, "stats": result})
+
+# ========== 监查问题 API ==========
+
+@app.route('/api/findings', methods=['GET'])
+def get_findings():
+    """获取监查问题列表（可按项目/中心/状态筛选）"""
+    findings = read_json(FINDINGS_FILE)
+    project_id = request.args.get('project_id')
+    center_id = request.args.get('center_id')
+    status = request.args.get('status')
+    
+    if project_id:
+        findings = [f for f in findings if f.get('project_id') == project_id]
+    if center_id:
+        findings = [f for f in findings if f.get('center_id') == center_id]
+    if status:
+        findings = [f for f in findings if f.get('status') == status]
+    
+    # 补充项目名称和中心名称
+    projects = read_json(PROJECTS_FILE)
+    centers = read_json(CENTERS_FILE)
+    project_map = {p['id']: p.get('name', '') for p in projects}
+    center_map = {c['id']: c.get('code', '') + ' ' + c.get('name', '') for c in centers}
+    
+    for f in findings:
+        f['project_name'] = project_map.get(f.get('project_id'), '')
+        f['center_name'] = center_map.get(f.get('center_id'), '')
+    
+    # 按严重程度和状态排序
+    severity_order = {'Critical': 0, 'Major': 1, 'Minor': 2}
+    findings.sort(key=lambda x: (x.get('status') == 'Closed', x.get('status') == 'Resolved',
+                                 severity_order.get(x.get('severity', 'Minor'), 2),
+                                 x.get('due_date', '')))
+    return jsonify({"success": True, "findings": findings})
+
+@app.route('/api/findings', methods=['POST'])
+def create_finding():
+    """创建监查问题"""
+    data = request.json or {}
+    findings = read_json(FINDINGS_FILE)
+    # 自动生成编号
+    existing_nums = [int(f.get('finding_number', 'F0').replace('F', '')) for f in findings if f.get('finding_number', '').startswith('F') and f.get('finding_number', '')[1:].isdigit()]
+    next_num = max(existing_nums) + 1 if existing_nums else 1
+    finding = {
+        "id": str(uuid.uuid4())[:8],
+        "finding_number": data.get('finding_number', f'F{next_num:03d}'),
+        "project_id": data.get('project_id', ''),
+        "center_id": data.get('center_id', ''),
+        "description": data.get('description', ''),
+        "category": data.get('category', '其他'),
+        "severity": data.get('severity', 'Minor'),
+        "status": data.get('status', 'Open'),
+        "found_date": data.get('found_date', date.today().isoformat()),
+        "due_date": data.get('due_date', ''),
+        "corrective_action": data.get('corrective_action', ''),
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat()
+    }
+    findings.append(finding)
+    write_json(FINDINGS_FILE, findings)
+    return jsonify({"success": True, "finding": finding})
+
+@app.route('/api/finding/<finding_id>', methods=['PUT'])
+def update_finding(finding_id):
+    """更新监查问题"""
+    findings = read_json(FINDINGS_FILE)
+    idx = next((i for i, f in enumerate(findings) if f['id'] == finding_id), None)
+    if idx is None:
+        return jsonify({"success": False, "error": "问题不存在"}), 404
+    data = request.json or {}
+    for field in ['finding_number', 'project_id', 'center_id', 'description', 'category',
+                  'severity', 'status', 'found_date', 'due_date', 'corrective_action']:
+        if field in data:
+            findings[idx][field] = data[field]
+    findings[idx]['updated_at'] = datetime.now().isoformat()
+    write_json(FINDINGS_FILE, findings)
+    return jsonify({"success": True, "finding": findings[idx]})
+
+@app.route('/api/finding/<finding_id>', methods=['DELETE'])
+def delete_finding(finding_id):
+    """删除监查问题"""
+    findings = read_json(FINDINGS_FILE)
+    findings = [f for f in findings if f['id'] != finding_id]
+    write_json(FINDINGS_FILE, findings)
+    return jsonify({"success": True})
+
+@app.route('/api/findings-stats', methods=['GET'])
+def get_findings_stats():
+    """监查问题统计"""
+    findings = read_json(FINDINGS_FILE)
+    projects = read_json(PROJECTS_FILE)
+    centers = read_json(CENTERS_FILE)
+    today = date.today()
+    
+    total = len(findings)
+    by_status = {}
+    by_severity = {}
+    by_category = {}
+    overdue = 0
+    
+    for f in findings:
+        s = f.get('status', 'Open')
+        by_status[s] = by_status.get(s, 0) + 1
+        sev = f.get('severity', 'Minor')
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        cat = f.get('category', '其他')
+        by_category[cat] = by_category.get(cat, 0) + 1
+        if f.get('status') not in ('Closed', 'Resolved') and f.get('due_date'):
+            try:
+                due = date.fromisoformat(f['due_date'])
+                if due < today:
+                    overdue += 1
+            except: pass
+    
+    return jsonify({"success": True, "stats": {
+        "total": total, "by_status": by_status, "by_severity": by_severity,
+        "by_category": by_category, "overdue": overdue
+    }})
 
 # ========== 统计 API ==========
 
