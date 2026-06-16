@@ -7,10 +7,6 @@ CRA Portal - 临床研究助理管理中心
 import os
 import json
 import uuid
-import subprocess
-import urllib.request
-import urllib.parse
-import base64
 from datetime import datetime, date
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -18,6 +14,10 @@ from pathlib import Path
 
 app = Flask(__name__)
 CORS(app)
+
+# ========== 数据持久化策略 ==========
+# Render 免费版文件系统会重启丢失，但用户可通过微信告知 AI 同步
+# AI 从网站 API 拉取数据到本地，并推送 GitHub 做备份
 
 # 配置 - Render 上使用 data/ 目录存储数据
 DATA_DIR = Path('data')
@@ -30,50 +30,11 @@ FINDINGS_FILE = DATA_DIR / 'findings.json'
 
 # ========== 数据初始化 ==========
 
-def pull_file_from_github(rel_path, local_path):
-    """启动时从 GitHub 拉取数据文件到本地"""
-    token = os.environ.get('GITHUB_TOKEN', '')
-    if not token:
-        return False
-    repo = 'ZHUYIYUE/cra-portal'
-    url = f'https://api.github.com/repos/{repo}/contents/{rel_path}?ref=main'
-    req = urllib.request.Request(url, headers={
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github.v3+json'
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            info = json.loads(resp.read())
-            import base64
-            content = base64.b64decode(info['content']).decode('utf-8')
-            local_path.parent.mkdir(exist_ok=True)
-            with open(local_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-            print(f'[GitHub Pull] {rel_path} 已从 GitHub 拉取 ({len(content)} bytes)')
-            return True
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            print(f'[GitHub Pull] {rel_path} 在 GitHub 上不存在，跳过')
-        else:
-            print(f'[GitHub Pull] {rel_path} 拉取失败: {e}')
-    except Exception as e:
-        print(f'[GitHub Pull] {rel_path} 异常: {e}')
-    return False
-
 def ensure_data_dir():
-    """确保数据目录存在，并尝试从 GitHub 拉取已有数据"""
+    """确保数据目录存在，初始化空文件"""
     DATA_DIR.mkdir(exist_ok=True)
     
-    # 启动时尝试从 GitHub 拉取数据
-    print('[GitHub Pull] 尝试从 GitHub 拉取数据文件...')
-    pull_file_from_github('data/projects.json', PROJECTS_FILE)
-    pull_file_from_github('data/tasks.json', TASKS_FILE)
-    pull_file_from_github('data/centers.json', CENTERS_FILE)
-    pull_file_from_github('data/startup_tasks.json', STARTUP_TASKS_FILE)
-    pull_file_from_github('data/startup_logs.json', STARTUP_LOGS_FILE)
-    pull_file_from_github('data/findings.json', FINDINGS_FILE)
-    
-    # 仍然拉取失败的文件初始化为空数组
+    # 初始化空文件（如果不存在）
     if not PROJECTS_FILE.exists():
         write_json(PROJECTS_FILE, [])
     if not TASKS_FILE.exists():
@@ -96,68 +57,10 @@ def read_json(path):
         return []
 
 def write_json(path, data):
-    """写入JSON文件，并同步到 GitHub"""
+    """写入JSON文件（纯本地）"""
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    # 异步同步到 GitHub（最佳effort，失败不阻塞）
-    try:
-        sync_to_github(path)
-    except Exception as e:
-        print(f"[GitHub Sync] 同步失败（非阻塞）: {e}")
 
-def sync_to_github(path):
-    """将本地 data 文件同步到 GitHub 仓库"""
-    token = os.environ.get('GITHUB_TOKEN', '')
-    if not token:
-        return  # 没有 token 就跳过
-    
-    repo = 'ZHUYIYUE/cra-portal'  # GitHub 仓库
-    branch = 'main'
-    
-    # 计算文件在仓库中的相对路径
-    rel_path = str(path)
-    
-    # 读取文件内容并 base64 编码
-    with open(path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-    
-    # 先获取文件当前的 SHA（GitHub API 需要）
-    get_url = f'https://api.github.com/repos/{repo}/contents/{rel_path}?ref={branch}'
-    get_req = urllib.request.Request(get_url, headers={
-        'Authorization': f'token {token}',
-        'Accept': 'application/vnd.github.v3+json'
-    })
-    try:
-        with urllib.request.urlopen(get_req, timeout=10) as resp:
-            file_info = json.loads(resp.read())
-            file_sha = file_info['sha']
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            file_sha = None  # 文件不存在，需要创建
-        else:
-            raise
-    
-    # 提交内容
-    put_data = {
-        'message': f'auto-sync: update {rel_path}',
-        'content': content_b64,
-        'branch': branch,
-        'sha': file_sha
-    }
-    import http.client
-    put_url = f'https://api.github.com/repos/{repo}/contents/{rel_path}'
-    put_req = urllib.request.Request(put_url, 
-        data=json.dumps(put_data).encode('utf-8'),
-        headers={
-            'Authorization': f'token {token}',
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-        },
-        method='PUT'
-    )
-    with urllib.request.urlopen(put_req, timeout=10) as resp:
-        print(f"[GitHub Sync] {rel_path} 同步成功")
 
 # ========== 项目 API ==========
 
