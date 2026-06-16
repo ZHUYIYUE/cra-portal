@@ -29,13 +29,55 @@ STARTUP_LOGS_FILE = DATA_DIR / 'startup_logs.json'
 
 # ========== 数据初始化 ==========
 
+def pull_file_from_github(rel_path, local_path):
+    """启动时从 GitHub 拉取数据文件到本地"""
+    token = os.environ.get('GITHUB_TOKEN', '')
+    if not token:
+        return False
+    repo = 'ZHUYIYUE/cra-portal'
+    url = f'https://api.github.com/repos/{repo}/contents/{rel_path}?ref=main'
+    req = urllib.request.Request(url, headers={
+        'Authorization': f'token {token}',
+        'Accept': 'application/vnd.github.v3+json'
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            info = json.loads(resp.read())
+            import base64
+            content = base64.b64decode(info['content']).decode('utf-8')
+            local_path.parent.mkdir(exist_ok=True)
+            with open(local_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            print(f'[GitHub Pull] {rel_path} 已从 GitHub 拉取 ({len(content)} bytes)')
+            return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            print(f'[GitHub Pull] {rel_path} 在 GitHub 上不存在，跳过')
+        else:
+            print(f'[GitHub Pull] {rel_path} 拉取失败: {e}')
+    except Exception as e:
+        print(f'[GitHub Pull] {rel_path} 异常: {e}')
+    return False
+
 def ensure_data_dir():
-    """确保数据目录存在"""
+    """确保数据目录存在，并尝试从 GitHub 拉取已有数据"""
     DATA_DIR.mkdir(exist_ok=True)
+    
+    # 启动时尝试从 GitHub 拉取数据
+    print('[GitHub Pull] 尝试从 GitHub 拉取数据文件...')
+    pull_file_from_github('data/projects.json', PROJECTS_FILE)
+    pull_file_from_github('data/tasks.json', TASKS_FILE)
+    pull_file_from_github('data/centers.json', CENTERS_FILE)
+    pull_file_from_github('data/startup_tasks.json', STARTUP_TASKS_FILE)
+    pull_file_from_github('data/startup_logs.json', STARTUP_LOGS_FILE)
+    
+    # 仍然拉取失败的文件初始化为空数组
     if not PROJECTS_FILE.exists():
         write_json(PROJECTS_FILE, [])
     if not TASKS_FILE.exists():
         write_json(TASKS_FILE, [])
+    if not CENTERS_FILE.exists():
+        write_json(CENTERS_FILE, [])
     if not STARTUP_TASKS_FILE.exists():
         write_json(STARTUP_TASKS_FILE, [])
     if not STARTUP_LOGS_FILE.exists():
