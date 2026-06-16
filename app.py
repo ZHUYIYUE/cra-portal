@@ -469,6 +469,44 @@ def get_stats():
         }
     })
 
+# ========== 数据迁移 ==========
+
+@app.route('/migrate', methods=['POST'])
+def migrate_data():
+    """从旧 JSON 数据迁移到 PostgreSQL"""
+    old_data = {
+        "projects": [
+            {"id": "3142iv", "code": "3142iv", "name": "JMKX003142iv", "stage": "进行中", "phase": "DBL", "centers_count": 5, "notes": "5家中心：01/07/09/18/21"},
+            {"id": "0197", "code": "0197", "name": "JMKX00197", "stage": "进行中", "phase": "SSU", "centers_count": 3, "notes": "3家中心：08/14/18"}
+        ],
+        "tasks": [
+            {"id": "t001", "project_id": "0197", "center_id": "c0197-08", "title": "苏北(08)协议稿+PPT", "priority": "high", "due_date": "2026-06-23", "done": False, "created_at": "2026-06-12"},
+            {"id": "t002", "project_id": "0197", "center_id": "c0197-14", "title": "粤北(14)CTMS立项审核+PI签字", "priority": "high", "due_date": "2026-06-20", "done": False, "created_at": "2026-06-12"},
+            {"id": "t003", "project_id": "0197", "center_id": "c0197-18", "title": "丽水(18)立项资料电子版预审", "priority": "high", "due_date": "2026-06-25", "done": False, "created_at": "2026-06-12"},
+            {"id": "t004", "project_id": "3142iv", "center_id": "c3142-01", "title": "中心01 TMF扫描归档", "priority": "medium", "due_date": "2026-06-20", "done": True, "created_at": "2026-06-15"},
+            {"id": "t005", "project_id": "3142iv", "center_id": "c3142-07", "title": "中心07 SDV问题回复", "priority": "medium", "due_date": "2026-06-30", "done": False, "created_at": "2026-06-12"},
+            {"id": "t006", "project_id": "3142iv", "center_id": "c3142-09", "title": "中心09 监查报告撰写", "priority": "low", "due_date": "2026-07-05", "done": False, "created_at": "2026-06-12"},
+            {"id": "t007", "project_id": "0197", "center_id": None, "title": "浙二TMF清单整理", "priority": "medium", "due_date": "2026-06-23", "done": False, "created_at": "2026-06-12"}
+        ],
+        "centers": []
+    }
+    
+    imported = {"projects": 0, "tasks": 0, "centers": 0}
+    
+    for p in old_data["projects"]:
+        try:
+            db.insert_project(p)
+            imported["projects"] += 1
+        except: pass
+    
+    for t in old_data["tasks"]:
+        try:
+            db.insert_task(t)
+            imported["tasks"] += 1
+        except: pass
+    
+    return jsonify({"success": True, "imported": imported})
+
 # ========== 页面路由 ==========
 
 @app.route('/')
