@@ -488,7 +488,16 @@ def migrate_data():
             {"id": "t006", "project_id": "3142iv", "center_id": "c3142-09", "title": "中心09 监查报告撰写", "priority": "low", "due_date": "2026-07-05", "done": False, "created_at": "2026-06-12"},
             {"id": "t007", "project_id": "0197", "center_id": None, "title": "浙二TMF清单整理", "priority": "medium", "due_date": "2026-06-23", "done": False, "created_at": "2026-06-12"}
         ],
-        "centers": []
+        "centers": [
+            {"id": "c001", "code": "01", "name": "浙江大学医学院附属第二医院", "project_id": "3142iv", "created_at": "2026-05-19T14:20:00"},
+            {"id": "c002", "code": "07", "name": "惠州市第三人民医院", "project_id": "3142iv", "created_at": "2026-05-19T14:20:00"},
+            {"id": "c003", "code": "09", "name": "宁波市第二医院", "project_id": "3142iv", "created_at": "2026-05-19T14:20:00"},
+            {"id": "c004", "code": "18", "name": "福州大学附属省立医院", "project_id": "3142iv", "created_at": "2026-05-19T14:20:00"},
+            {"id": "c005", "code": "21", "name": "南昌大学附属第二医院", "project_id": "3142iv", "created_at": "2026-05-19T14:20:00"},
+            {"id": "c006", "code": "08", "name": "苏北人民医院", "project_id": "0197", "pi": "闵凌峰", "department": "呼吸与危重症医学科", "created_at": "2026-05-19T14:22:00"},
+            {"id": "c007", "code": "14", "name": "粤北人民医院", "project_id": "0197", "pi": "张国平", "department": "肿瘤科", "created_at": "2026-05-19T14:22:00"},
+            {"id": "c008", "code": "18", "name": "丽水市中心医院", "project_id": "0197", "pi": "纪建松", "department": "肿瘤科", "created_at": "2026-05-19T14:22:00"}
+        ]
     }
     
     imported = {"projects": 0, "tasks": 0, "centers": 0}
