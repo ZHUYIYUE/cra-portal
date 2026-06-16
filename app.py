@@ -471,7 +471,7 @@ def get_stats():
 
 # ========== 数据备份 ==========
 
-@app.route('/api/backup')
+@app.route('/api/backup', methods=['GET', 'POST'])
 def backup_data():
     """导出所有数据为 JSON 文件"""
     conn = db.get_connection()
