@@ -1037,6 +1037,19 @@ async function toggleTaskDone(taskId, newDone) {
     }
 }
 
+// 删除任务
+async function deleteTaskById(taskId) {
+    if (!confirm('确定删除此待办？')) return;
+    const res = await fetch(`/api/task/${taskId}`, {method: 'DELETE'});
+    const result = await res.json();
+    if (result.success) {
+        await loadTasks();
+        await loadStats();
+    } else {
+        alert('❌ 删除失败: ' + (result.error || '未知错误'));
+    }
+}
+
 // 编辑任务
 async function showEditTask(taskId) {
     const task = state.tasks.find(t => t.id === taskId);
