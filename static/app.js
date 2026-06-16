@@ -295,23 +295,14 @@ async function viewProject(projectId) {
 
 async function loadProjectCenters(projectId) {
     try {
-        const el = document.getElementById('projectCenters');
-        if (el) el.innerHTML = '<p style="color:#888;padding:10px;">⏳ 加载中... projectId=' + projectId + '</p>';
         const res = await fetch(`/api/centers?project_id=${projectId}`);
-        const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch(e) { data = {success:false, error: e.message, raw: text.substring(0,200)}; }
+        const data = await res.json();
         if (data.success) {
-            const el2 = document.getElementById('projectCenters');
-            if (el2) el2.dataset.projectId = projectId;
+            const el = document.getElementById('projectCenters');
+            if (el) el.dataset.projectId = projectId;
             renderCenters(data.centers, projectId);
-        } else {
-            const el2 = document.getElementById('projectCenters');
-            if (el2) el2.innerHTML = '<p style="color:red;padding:10px;">❌ 加载失败: ' + JSON.stringify(data).substring(0,200) + '</p>';
         }
     } catch (err) {
-        const el = document.getElementById('projectCenters');
-        if (el) el.innerHTML = '<p style="color:red;padding:10px;">❌ 异常: ' + err.message + '</p>';
         console.error('加载中心失败:', err);
     }
 }
@@ -326,7 +317,7 @@ function renderCenters(centers, projectId) {
     }
     
     el.innerHTML = centers.map(c => {
-        const ms = c.milestones || [];
+        const ms = Array.isArray(c.milestones) ? c.milestones : [];
         const done = ms.filter(m => m.done).length;
         const total = ms.length;
         const pct = total > 0 ? Math.round(done / total * 100) : 0;
