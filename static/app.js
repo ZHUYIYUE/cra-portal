@@ -1822,3 +1822,31 @@ async function deleteFinding(id) {
         alert('删除失败');
     }
 }
+
+// ========== 数据备份 ==========
+
+async function backupData() {
+    if (!confirm('确定导出数据备份？备份文件将自动下载。')) return;
+    try {
+        const res = await fetch('/api/backup');
+        if (!res.ok) throw new Error('备份失败');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const disposition = res.headers.get('Content-Disposition');
+        let filename = 'cra-portal-backup.json';
+        if (disposition) {
+            const match = disposition.match(/filename=(.+)/);
+            if (match) filename = match[1].replace(/"/g, '');
+        }
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        alert('✅ 备份成功！文件已下载。');
+    } catch (err) {
+        alert('❌ 备份失败: ' + err.message);
+    }
+}

@@ -469,6 +469,52 @@ def get_stats():
         }
     })
 
+# ========== 数据备份 ==========
+
+@app.route('/api/backup')
+def backup_data():
+    """导出所有数据为 JSON 文件"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    # 获取所有表名
+    cursor.execute("""
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+    """)
+    tables = [row[0] for row in cursor.fetchall()]
+    
+    backup_data = {
+        "backup_time": datetime.now().isoformat(),
+        "tables": {}
+    }
+    
+    # 逐个表导出数据
+    for table in tables:
+        cursor.execute(f"SELECT * FROM {table}")
+        columns = [desc[0] for desc in cursor.description]
+        rows = cursor.fetchall()
+        
+        backup_data["tables"][table] = {
+            "columns": columns,
+            "rows": [dict(zip(columns, row)) for row in rows]
+        }
+    
+    cursor.close()
+    conn.close()
+    
+    # 转换为 JSON 字符串
+    json_str = json.dumps(backup_data, ensure_ascii=False, indent=2, default=str)
+    
+    # 返回文件下载
+    filename = f"cra-portal-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    return Response(
+        json_str,
+        mimetype='application/json',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
+
 # ========== 数据迁移 ==========
 
 @app.route('/migrate', methods=['POST'])
