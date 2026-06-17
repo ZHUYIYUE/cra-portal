@@ -489,12 +489,16 @@ async function loadProjectTasks(projectId) {
         return;
     }
     
-    container.innerHTML = tasks.map(t => `
-        <div class="task-item ${t.done ? 'task-done' : ''}" id="task-${t.id}">
+    container.innerHTML = tasks.map(t => {
+        const taskStatus = t.task_status || 'pending';
+        const isWaitingCrc = taskStatus === 'waiting_crc' && !t.done;
+        return `
+        <div class="task-item ${t.done ? 'task-done' : ''}" id="task-${t.id}" data-status="${taskStatus}">
             <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTaskDone('${t.id}', ${!t.done})">
             <div class="task-content" onclick="viewTaskDetail('${t.id}')">
                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                 <p class="task-meta">
+                    ${isWaitingCrc ? `<span style="background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;margin-right:4px;">跟进CRC</span>` : ''}
                     ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
                     <span class="ability-tag ability-${t.ability_type || 'execution'}">${ABILITY_ICONS[t.ability_type || 'execution']} ${ABILITY_LABELS[t.ability_type || 'execution']}</span> ·
                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : ''}
@@ -504,7 +508,7 @@ async function loadProjectTasks(projectId) {
             <button class="btn-icon" onclick="event.stopPropagation();showEditTask('${t.id}')" title="编辑"><i class="fas fa-edit" style="color:#3498db;"></i></button>
             <button class="btn-icon" onclick="event.stopPropagation();deleteTaskById('${t.id}')" title="删除"><i class="fas fa-trash-alt" style="color:#ccc;"></i></button>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // ========== 待办事项页面 ==========
@@ -522,6 +526,7 @@ async function loadTasks(content) {
     const total = state.tasks.length;
     const done = state.tasks.filter(t => t.done).length;
     const pending = total - done;
+    const waiting_crc = state.tasks.filter(t => t.task_status === 'waiting_crc' && !t.done).length;
     
     // 按能力类型分组统计
     const abilityGroups = {};
@@ -557,6 +562,7 @@ async function loadTasks(content) {
         <div class="filter-bar">
             <button class="filter-btn active" onclick="filterTasks(this, 'all')">全部 (${total})</button>
             <button class="filter-btn" onclick="filterTasks(this, 'pending')">待完成 (${pending})</button>
+            ${waiting_crc > 0 ? `<button class="filter-btn" onclick="filterTasks(this, 'waiting_crc')" style="color:#e67e22;font-weight:bold;">跟进CRC (${waiting_crc})</button>` : `<button class="filter-btn" onclick="filterTasks(this, 'waiting_crc')">跟进CRC (0)</button>`}
             <button class="filter-btn" onclick="filterTasks(this, 'done')">已完成 (${done})</button>
         </div>
 
@@ -564,14 +570,17 @@ async function loadTasks(content) {
             ${state.tasks.length === 0 ? '<p style="color:#999;padding:20px;">暂无待办事项</p>' :
                 state.tasks.map(t => {
                     const proj = state.projects.find(p => p.id === t.project_id);
+                    const taskStatus = t.task_status || 'pending';
+                    const isWaitingCrc = taskStatus === 'waiting_crc' && !t.done;
                     return `
-                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-ability="${t.ability_type || 'execution'}">
+                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-status="${taskStatus}" data-ability="${t.ability_type || 'execution'}">
                             <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="toggleTaskDone('${t.id}', ${!t.done})">
                             <div class="task-content" onclick="viewTaskDetail('${t.id}')">
                                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escHtml(t.title)}</h4>
                                 <p class="task-meta">
                                     ${proj ? `<i class="fas fa-folder"></i> ${escHtml(proj.name)} ·` : ''}
                                     ${t.center_name ? `<i class="fas fa-hospital"></i> ${escHtml(t.center_name)} ·` : ''}
+                                    ${isWaitingCrc ? `<span style="background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;margin-right:4px;">跟进CRC</span>` : ''}
                                     <span class="ability-tag ability-${t.ability_type || 'execution'}">${ABILITY_ICONS[t.ability_type || 'execution']} ${ABILITY_LABELS[t.ability_type || 'execution']}</span> ·
                                     ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : '无截止日期'}
                                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
@@ -601,8 +610,10 @@ function filterTasks(btn, filter) {
     
     document.querySelectorAll('#taskList .task-item').forEach(item => {
         const done = item.dataset.done === 'true';
+        const status = item.dataset.status || 'pending';
         if (filter === 'all') item.style.display = '';
-        else if (filter === 'pending') item.style.display = done ? 'none' : '';
+        else if (filter === 'pending') item.style.display = (done || status === 'waiting_crc') ? 'none' : '';
+        else if (filter === 'waiting_crc') item.style.display = status === 'waiting_crc' && !done ? '' : 'none';
         else if (filter === 'done') item.style.display = done ? '' : 'none';
     });
 }
@@ -982,6 +993,14 @@ function renderTaskForm(projectId, title) {
                 </div>
             </div>
             <div class="form-group">
+                <label>任务状态</label>
+                <select name="task_status">
+                    <option value="pending">🔵 待处理</option>
+                    <option value="waiting_crc">🟠 跟进CRC</option>
+                    <option value="done">✅ 已完成</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>截止日期</label>
                 <input type="date" name="due_date">
             </div>
@@ -1025,13 +1044,16 @@ async function onTaskProjectChange(projectId) {
 async function submitCreateTask(e) {
     e.preventDefault();
     const form = e.target;
+    const taskStatus = form.task_status.value;
     const data = {
         title: form.title.value,
         project_id: form.project_id.value,
         center_id: form.center_id.value,
         ability_type: form.ability_type.value,
         priority: form.priority.value,
-        due_date: form.due_date.value
+        due_date: form.due_date.value,
+        task_status: taskStatus,
+        done: taskStatus === 'done'
     };
     
     const res = await fetch('/api/tasks', {
@@ -1059,7 +1081,7 @@ async function toggleTaskDone(taskId, newDone) {
     const res = await fetch(`/api/task/${taskId}`, {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({done: newDone})
+        body: JSON.stringify({done: newDone, task_status: newDone ? 'done' : 'pending'})
     });
     const result = await res.json();
     
@@ -1140,11 +1162,16 @@ async function showEditTask(taskId) {
                 </div>
             </div>
             <div class="form-group">
-                <label>截止日期</label>
-                <input type="date" name="due_date" id="edit-task-due-date" value="${task.due_date || ''}">
+                <label>任务状态</label>
+                <select name="task_status" id="edit-task-status">
+                    <option value="pending" ${(task.task_status || 'pending') === 'pending' ? 'selected' : ''}>🔵 待处理</option>
+                    <option value="waiting_crc" ${task.task_status === 'waiting_crc' ? 'selected' : ''}>🟠 跟进CRC</option>
+                    <option value="done" ${task.task_status === 'done' ? 'selected' : ''}>✅ 已完成</option>
+                </select>
             </div>
             <div class="form-group">
-                <label><input type="checkbox" name="done" id="edit-task-done" ${task.done ? 'checked' : ''}> 标记为已完成</label>
+                <label>截止日期</label>
+                <input type="date" name="due_date" id="edit-task-due-date" value="${task.due_date || ''}">
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 保存修改</button>
@@ -1191,6 +1218,7 @@ async function submitUpdateTask(e, taskId) {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
+    const taskStatus = formData.get('task_status');
     
     const payload = {
         title: formData.get('title'),
@@ -1199,7 +1227,8 @@ async function submitUpdateTask(e, taskId) {
         ability_type: formData.get('ability_type'),
         priority: formData.get('priority'),
         due_date: formData.get('due_date') || null,
-        done: form.querySelector('[name=done]').checked
+        task_status: taskStatus,
+        done: taskStatus === 'done'
     };
     
     try {
@@ -2287,7 +2316,7 @@ async function loadFindings(content) {
 
     const categories = ['必备文件', '试验流程', '中心流程', '知情同意', '随机化/盲法', '数据记录', '药物管理', '其他'];
     const severities = ['Minor', 'Major', 'Critical'];
-    const statuses = ['Open', 'In Progress', 'Resolved', 'Closed'];
+    const statuses = ['Open', 'In Progress', 'Waiting CRC', 'Resolved', 'Closed'];
     const severityColors = { Minor: '#4CAF50', Major: '#FF9800', Critical: '#f44336' };
 
     content.innerHTML = `
@@ -2301,6 +2330,9 @@ async function loadFindings(content) {
                 </span>
                 <span class="stat-badge" style="background:#e3f2fd;color:#1565c0;padding:6px 12px;border-radius:8px;font-size:13px;">
                     进行中 <strong>${stats.by_status?.['In Progress'] || 0}</strong>
+                </span>
+                <span class="stat-badge" style="background:#ffe0b2;color:#bf360c;padding:6px 12px;border-radius:8px;font-size:13px;">
+                    跟进CRC <strong>${stats.by_status?.['Waiting CRC'] || 0}</strong>
                 </span>
                 <span class="stat-badge" style="background:#e8f5e9;color:#2e7d32;padding:6px 12px;border-radius:8px;font-size:13px;">
                     已解决 <strong>${(stats.by_status?.Resolved || 0) + (stats.by_status?.Closed || 0)}</strong>
@@ -2385,8 +2417,8 @@ function renderFindingsList() {
 
     const today = new Date().toISOString().split('T')[0];
     const severityColors = { Minor: '#4CAF50', Major: '#FF9800', Critical: '#f44336' };
-    const statusColors = { Open: '#e53935', 'In Progress': '#1976D2', Resolved: '#388E3C', Closed: '#757575' };
-    const statusLabels = { Open: 'Open', 'In Progress': '进行中', Resolved: '已解决', Closed: 'Closed' };
+    const statusColors = { Open: '#e53935', 'In Progress': '#1976D2', 'Waiting CRC': '#e67e22', Resolved: '#388E3C', Closed: '#757575' };
+    const statusLabels = { Open: 'Open', 'In Progress': '进行中', 'Waiting CRC': '跟进CRC', Resolved: '已解决', Closed: 'Closed' };
 
     container.innerHTML = filtered.map(f => {
         const isOverdue = f.due_date && f.due_date < today && !['Resolved', 'Closed'].includes(f.status);
@@ -2421,7 +2453,7 @@ function openNewFindingForm() {
     const centers = window._centers || [];
     const categories = ['必备文件', '试验流程', '中心流程', '知情同意', '随机化/盲法', '数据记录', '药物管理', '其他'];
     const severities = ['Minor', 'Major', 'Critical'];
-    const statuses = ['Open', 'In Progress', 'Resolved', 'Closed'];
+    const statuses = ['Open', 'In Progress', 'Waiting CRC', 'Resolved', 'Closed'];
     const today = new Date().toISOString().split('T')[0];
 
     openModal(`
@@ -2502,7 +2534,7 @@ function openEditFindingForm(id) {
     const centers = window._centers || [];
     const categories = ['必备文件', '试验流程', '中心流程', '知情同意', '随机化/盲法', '数据记录', '药物管理', '其他'];
     const severities = ['Minor', 'Major', 'Critical'];
-    const statuses = ['Open', 'In Progress', 'Resolved', 'Closed'];
+    const statuses = ['Open', 'In Progress', 'Waiting CRC', 'Resolved', 'Closed'];
 
     openModal(`
         <h3><i class="fas fa-edit" style="color:#1976D2;"></i> 编辑监查问题</h3>
