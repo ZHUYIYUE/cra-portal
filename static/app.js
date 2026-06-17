@@ -1538,9 +1538,13 @@ async function loadFindings(content) {
         </div>
 
         <div class="findings-filter" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <select id="filterProject" onchange="renderFindingsList()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+            <select id="filterProject" onchange="onFilterProjectChange();renderFindingsList()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
                 <option value="">全部项目</option>
                 ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+            </select>
+            <select id="filterCenter" onchange="renderFindingsList()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+                <option value="">全部中心</option>
+                ${centers.map(c => `<option value="${c.id}" data-project="${c.project_id}">${c.code} ${c.name}</option>`).join('')}
             </select>
             <select id="filterStatus" onchange="renderFindingsList()" style="padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
                 <option value="">全部状态</option>
@@ -1565,17 +1569,34 @@ async function loadFindings(content) {
     renderFindingsList();
 }
 
+function onFilterProjectChange() {
+    const projectId = document.getElementById('filterProject')?.value || '';
+    const centerSelect = document.getElementById('filterCenter');
+    if (!centerSelect) return;
+    const options = centerSelect.querySelectorAll('option');
+    options.forEach(opt => {
+        if (opt.value === '') return;
+        const pid = opt.getAttribute('data-project');
+        opt.style.display = (!projectId || pid === projectId) ? '' : 'none';
+    });
+    if (centerSelect.value && centerSelect.querySelector(`option[value="${centerSelect.value}"]`).style.display === 'none') {
+        centerSelect.value = '';
+    }
+}
+
 function renderFindingsList() {
     const container = document.getElementById('findingsList');
     if (!container || !window._allFindings) return;
 
     const projectId = document.getElementById('filterProject')?.value || '';
+    const centerId = document.getElementById('filterCenter')?.value || '';
     const status = document.getElementById('filterStatus')?.value || '';
     const severity = document.getElementById('filterSeverity')?.value || '';
     const category = document.getElementById('filterCategory')?.value || '';
 
     let filtered = window._allFindings.filter(f => {
         if (projectId && f.project_id !== projectId) return false;
+        if (centerId && f.center_id !== centerId) return false;
         if (status && f.status !== status) return false;
         if (severity && f.severity !== severity) return false;
         if (category && f.category !== category) return false;
@@ -1638,7 +1659,7 @@ function openNewFindingForm() {
                 </div>
                 <div class="form-group">
                     <label>所属项目 *</label>
-                    <select id="f_project" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                    <select id="f_project" required onchange="onFindingProjectChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择项目</option>
                         ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
                     </select>
@@ -1649,7 +1670,7 @@ function openNewFindingForm() {
                     <label>所属中心</label>
                     <select id="f_center" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择中心（可选）</option>
-                        ${centers.map(c => `<option value="${c.id}">${c.code} ${c.name}</option>`).join('')}
+                        ${centers.map(c => `<option value="${c.id}" data-project="${c.project_id}">${c.code} ${c.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -1718,7 +1739,7 @@ function openEditFindingForm(id) {
                 </div>
                 <div class="form-group">
                     <label>所属项目 *</label>
-                    <select id="f_project" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
+                    <select id="f_project" required onchange="onFindingProjectChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择项目</option>
                         ${projects.map(p => `<option value="${p.id}" ${p.id === f.project_id ? 'selected' : ''}>${p.name}</option>`).join('')}
                     </select>
@@ -1729,7 +1750,7 @@ function openEditFindingForm(id) {
                     <label>所属中心</label>
                     <select id="f_center" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择中心</option>
-                        ${centers.map(c => `<option value="${c.id}" ${c.id === f.center_id ? 'selected' : ''}>${c.code} ${c.name}</option>`).join('')}
+                        ${centers.map(c => `<option value="${c.id}" data-project="${c.project_id}" ${c.id === f.center_id ? 'selected' : ''}>${c.code} ${c.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -1777,6 +1798,33 @@ function openEditFindingForm(id) {
             </div>
         </form>
     `);
+    // 编辑表单打开后触发一次联动，隐藏不相关的中心
+    setTimeout(onFindingProjectChange, 0);
+}
+
+function onFindingProjectChange() {
+    const projectId = document.getElementById('f_project')?.value || '';
+    const centerSelect = document.getElementById('f_center');
+    if (!centerSelect) return;
+    const options = centerSelect.querySelectorAll('option');
+    let hasVisible = false;
+    options.forEach(opt => {
+        if (opt.value === '') {
+            opt.textContent = projectId ? '请选择中心（可选）' : '请先选择项目';
+            return;
+        }
+        const pid = opt.getAttribute('data-project');
+        const visible = !projectId || pid === projectId;
+        opt.style.display = visible ? '' : 'none';
+        if (visible) hasVisible = true;
+    });
+    if (centerSelect.value && centerSelect.querySelector(`option[value="${centerSelect.value}"]`)?.style.display === 'none') {
+        centerSelect.value = '';
+    }
+    if (!hasVisible && projectId) {
+        const emptyOpt = centerSelect.querySelector('option[value=""]');
+        if (emptyOpt) emptyOpt.textContent = '该项目暂无中心';
+    }
 }
 
 async function submitFindingForm(e, editId) {
