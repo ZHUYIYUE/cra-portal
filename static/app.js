@@ -74,6 +74,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initApp() {
+    // 自动加载总览页
+    navigateTo('dashboard');
+    
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', function(e) {
             e.preventDefault();
