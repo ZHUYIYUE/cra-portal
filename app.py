@@ -128,13 +128,28 @@ def delete_task(task_id):
 
 # ========== 中心 API ==========
 
-@app.route('/api/centers', methods=['GET'])
-def get_centers():
-    centers = db.get_centers()
-    project_id = request.args.get('project_id')
-    if project_id:
-        centers = [c for c in centers if c.get('project_id') == project_id]
-    return jsonify({"success": True, "centers": centers})
+@app.route('/api/center/<center_id>', methods=['GET', 'PUT'])
+def get_center_detail(center_id):
+    if request.method == 'GET':
+        # 返回中心详情 + 关联的待办 + 监查问题
+        center = db.get_center(center_id)
+        if not center:
+            return jsonify({"success": False, "error": "中心不存在"}), 404
+        # 获取该中心的待办
+        tasks = db.get_tasks(center_id=center_id)
+        # 获取该中心的监查问题
+        findings = db.get_findings(center_id=center_id)
+        return jsonify({
+            "success": True,
+            "center": center,
+            "tasks": tasks,
+            "findings": findings
+        })
+    else:
+        # PUT - 更新中心
+        data = request.json or {}
+        result = db.update_center(center_id, data)
+        return jsonify({"success": True, "center": result})
 
 @app.route('/api/centers', methods=['POST'])
 def create_center():
@@ -144,6 +159,14 @@ def create_center():
         "project_id": data.get('project_id', ''),
         "code": data.get('code') or data.get('center_code') or '',
         "name": data.get('name') or data.get('center_name') or '未命名中心',
+        "pi_name": data.get('pi_name', ''),
+        "pi_phone": data.get('pi_phone', ''),
+        "pi_email": data.get('pi_email', ''),
+        "department": data.get('department', ''),
+        "contact_crc": data.get('contact_crc', ''),
+        "contact_crc_phone": data.get('contact_crc_phone', ''),
+        "contact_ethics": data.get('contact_ethics', ''),
+        "address": data.get('address', ''),
         "milestones": data.get('milestones', []),
     }
     db.insert_center(center)
