@@ -263,12 +263,14 @@ def delete_project(project_id):
 
 # ========== tasks ==========
 
-def get_tasks(project_id=None):
+def get_tasks(project_id=None, center_id=None):
     conn = get_connection()
     if conn is None:
         return []
     cur = conn.cursor()
-    if project_id:
+    if center_id:
+        cur.execute('SELECT * FROM tasks WHERE center_id = %s ORDER BY created_at', (center_id,))
+    elif project_id:
         cur.execute('SELECT * FROM tasks WHERE project_id = %s ORDER BY created_at', (project_id,))
     else:
         cur.execute('SELECT * FROM tasks ORDER BY created_at')
