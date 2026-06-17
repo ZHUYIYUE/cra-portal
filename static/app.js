@@ -196,24 +196,10 @@ async function loadDashboard(content) {
         ${s.overdue_tasks > 0 ? `<div class="alert-banner" style="background:#ffebee;border-left:4px solid #f44336;"><i class="fas fa-exclamation-triangle" style="color:#f44336;"></i> 有 <strong>${s.overdue_tasks}</strong> 个待办已逾期！</div>` : ''}
         ${s.due_soon > 0 ? `<div class="alert-banner" style="background:#fff8e1;border-left:4px solid #ff9800;"><i class="fas fa-clock" style="color:#ff9800;"></i> 有 <strong>${s.due_soon}</strong> 个任务将在7天内到期！</div>` : ''}
 
-        <!-- 各中心进度快照 -->
-        ${centerProgress.length > 0 ? `
+        ${centers.length > 0 ? `
         <div class="card">
-            <div class="card-header"><i class="fas fa-chart-line"></i> 各中心进度</div>
-            <div style="padding:10px;">
-                ${centerProgress.map(c => `
-                    <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openCenterDetail('${c.id}')">
-                        <div style="width:80px;font-size:0.9em;color:#666;">${escHtml(c.code)}</div>
-                        <div style="flex:1;margin:0 10px;">
-                            <div style="font-size:0.9em;margin-bottom:4px;">${escHtml(c.name)}</div>
-                            <div style="width:100%;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden;">
-                                <div style="width:${c.pct}%;height:100%;background:${c.pct === 100 ? '#27ae60' : c.pct >= 50 ? '#f39c12' : '#3498db'};border-radius:3px;transition:width .3s;"></div>
-                            </div>
-                        </div>
-                        <div style="width:50px;text-align:right;font-size:0.85em;color:#888;">${c.done}/${c.total}</div>
-                    </div>
-                `).join('')}
-            </div>
+            <div class="card-header"><i class="fas fa-map-marked-alt"></i> 中心分布</div>
+            <div id="centerMap" class="map-container"></div>
         </div>` : ''}
 
         <div class="card">
@@ -234,6 +220,11 @@ async function loadDashboard(content) {
             </div>
         </div>
     `;
+    
+    // 初始化中心地图
+    if (centers.length > 0) {
+        initCenterMap(centers);
+    }
 }
 
 // ========== 项目页面 ==========
@@ -2915,5 +2906,125 @@ async function submitCenterInfo(e, centerId) {
         }
     } catch (err) {
         alert('❌ 保存失败: ' + err.message);
+    }
+}
+
+// ========== 中心地图（Leaflet） ==========
+
+/** 城市坐标映射 */
+const _cityCoords = {
+    '杭州': [30.2741, 120.1551],
+    '惠州': [23.1117, 114.4168],
+    '宁波': [29.8683, 121.5440],
+    '福州': [26.0745, 119.2965],
+    '南昌': [28.6829, 115.8582],
+    '扬州': [32.3932, 119.4127],
+    '韶关': [24.8104, 113.5975],
+    '丽水': [28.4676, 119.9228],
+    '苏州': [31.2990, 120.5853],
+    '深圳': [22.5431, 114.0579],
+    '广州': [23.1291, 113.2644],
+    '南京': [32.0603, 118.7969],
+    '上海': [31.2304, 121.4737],
+};
+
+/** 根据中心名称解析城市 */
+function _getCenterCity(name) {
+    for (const [city] of Object.entries(_cityCoords)) {
+        if (name.includes(city)) return city;
+    }
+    // 特殊映射：粤北→韶关
+    if (name.includes('粤北')) return '韶关';
+    return null;
+}
+
+let _centerMap = null;
+
+function initCenterMap(centers) {
+    const el = document.getElementById('centerMap');
+    if (!el) return;
+    
+    // 清理旧地图
+    if (_centerMap) {
+        _centerMap.remove();
+        _centerMap = null;
+    }
+    
+    // 收集有坐标的中心
+    const points = [];
+    centers.forEach(c => {
+        const city = _getCenterCity(c.name || '');
+        if (city && _cityCoords[city]) {
+            const ms = Array.isArray(c.milestones) ? c.milestones : [];
+            const done = ms.filter(m => m.done).length;
+            const total = ms.length;
+            const pct = total > 0 ? Math.round(done/total*100) : 0;
+            points.push({
+                id: c.id,
+                code: c.code,
+                name: c.name,
+                city,
+                lat: _cityCoords[city][0],
+                lng: _cityCoords[city][1],
+                pct,
+                done, total,
+                tasks: c.task_count || 0,
+                openFindings: c.open_finding_count || 0,
+                projectId: c.project_id || ''
+            });
+        }
+    });
+    
+    if (points.length === 0) {
+        el.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 暂无已定位的中心</p>';
+        return;
+    }
+    
+    // 计算中心点
+    const avgLat = points.reduce((s,p) => s+p.lat, 0) / points.length;
+    const avgLng = points.reduce((s,p) => s+p.lng, 0) / points.length;
+    
+    _centerMap = L.map('centerMap').setView([avgLat, avgLng], 7);
+    
+    // 高德底图（国内速度快）
+    L.tileLayer('https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+        attribution: '&copy; AutoNavi',
+        maxZoom: 18,
+        minZoom: 4
+    }).addTo(_centerMap);
+    
+    // 给每个中心加标记
+    points.forEach(p => {
+        const color = p.projectId.includes('3142') ? '#3498db' : '#e67e22';
+        const radius = Math.max(8, 8 + Math.min(p.tasks + p.openFindings, 5));
+        
+        const marker = L.circleMarker([p.lat, p.lng], {
+            radius,
+            fillColor: color,
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.85
+        }).addTo(_centerMap);
+        
+        marker.bindPopup(`
+            <div style="min-width:200px;">
+                <div style="font-weight:600;font-size:15px;color:#2c3e50;border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">
+                    ${escHtml(p.city)} ${escHtml(p.name)}
+                </div>
+                <table style="font-size:13px;width:100%;">
+                    <tr><td style="color:#888;padding:2px 6px 2px 0;">进度</td><td style="font-weight:500;"><span style="color:${p.pct === 100 ? '#27ae60' : p.pct >= 50 ? '#f39c12' : '#3498db'};">${p.pct}%</span> (${p.done}/${p.total})</td></tr>
+                    <tr><td style="color:#888;padding:2px 6px 2px 0;">待办</td><td style="font-weight:500;">${p.tasks > 0 ? '<span style="color:#e67e22;">'+p.tasks+'</span>' : p.tasks}</td></tr>
+                    ${p.openFindings > 0 ? `<tr><td style="color:#888;padding:2px 6px 2px 0;">问题</td><td style="font-weight:500;color:#e74c3c;">${p.openFindings}</td></tr>` : ''}
+                </table>
+                <button onclick="openCenterDetail('${p.id}')" style="margin-top:6px;padding:4px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">查看详情 →</button>
+            </div>
+        `);
+    });
+    
+    // 适应所有标记
+    const bounds = points.map(p => [p.lat, p.lng]);
+    if (bounds.length > 1) {
+        _centerMap.fitBounds(bounds, {padding: [40, 40]});
     }
 }
