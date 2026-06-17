@@ -2,6 +2,7 @@
 """
 CRA Portal - 临床研究助理管理中心
 PostgreSQL 版：数据持久化到数据库，不受 Render 重启影响
+v2026-06-17: 中心详情API + 仪表盘升级
 """
 
 import os
