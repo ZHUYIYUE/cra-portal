@@ -8,7 +8,7 @@ import os
 import json
 import uuid
 from datetime import datetime, date
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 
 import db
