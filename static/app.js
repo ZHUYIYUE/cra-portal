@@ -1850,3 +1850,70 @@ async function backupData() {
         alert('❌ 备份失败: ' + err.message);
     }
 }
+
+// ========== 导出 Excel ==========
+
+function showExportMenu() {
+    const menuHtml = `
+    <div class="modal-overlay" onclick="closeExportModal(event)" style="display:flex;justify-content:center;align-items:center;">
+      <div class="modal" style="width:320px;padding:24px;">
+        <h3 style="margin:0 0 16px;font-size:18px;">导出 Excel</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn" onclick="exportExcel('tasks')" style="width:100%;">
+            📋 待办事项
+          </button>
+          <button class="btn" onclick="exportExcel('findings')" style="width:100%;">
+            🔍 监查问题
+          </button>
+          <button class="btn" onclick="exportExcel('centers')" style="width:100%;">
+            🏥 中心信息
+          </button>
+          <button class="btn" onclick="exportExcel('projects')" style="width:100%;">
+            📊 项目信息
+          </button>
+          <button class="btn btn-primary" onclick="exportExcel('all')" style="width:100%;">
+            📦 全部数据
+          </button>
+        </div>
+        <button class="btn btn-outline" onclick="closeExportModal()" style="width:100%;margin-top:12px;">取消</button>
+      </div>
+    </div>`;
+    const div = document.createElement('div');
+    div.id = 'exportModal';
+    div.innerHTML = menuHtml;
+    document.body.appendChild(div);
+}
+
+function closeExportModal(e) {
+    if (e && e.target !== e.currentTarget) return;
+    const modal = document.getElementById('exportModal');
+    if (modal) modal.remove();
+}
+
+async function exportExcel(type) {
+    closeExportModal();
+    try {
+        const res = await fetch(`/api/export/${type}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({error: '导出失败'}));
+            throw new Error(err.error || '导出失败');
+        }
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const disposition = res.headers.get('Content-Disposition');
+        let filename = `cra-portal-${type}.xlsx`;
+        if (disposition) {
+            const match = disposition.match(/filename=(.+)/);
+            if (match) filename = match[1];
+        }
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('❌ 导出失败: ' + err.message);
+    }
+}
