@@ -59,8 +59,14 @@ def init_db():
                 project_id VARCHAR(8) DEFAULT '',
                 code VARCHAR(100) DEFAULT '',
                 name VARCHAR(255) DEFAULT '未命名中心',
-                pi VARCHAR(255) DEFAULT '',
+                pi_name VARCHAR(255) DEFAULT '',
+                pi_phone VARCHAR(50) DEFAULT '',
+                pi_email VARCHAR(255) DEFAULT '',
                 department VARCHAR(255) DEFAULT '',
+                contact_crc VARCHAR(255) DEFAULT '',
+                contact_crc_phone VARCHAR(50) DEFAULT '',
+                contact_ethics TEXT DEFAULT '',
+                address TEXT DEFAULT '',
                 notes TEXT DEFAULT '',
                 milestones JSONB DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -117,6 +123,31 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # 升级 centers 表：添加新字段（如果不存在）
+        try:
+            cur.execute("""SELECT column_name FROM information_schema.columns 
+                        WHERE table_name='centers' AND column_name='pi_name'""")
+            if cur.fetchone() is None:
+                # 旧表没有新字段，需要升级
+                # 先检查是否有 pi 字段（旧版），如果有则迁移数据
+                cur.execute("""SELECT column_name FROM information_schema.columns 
+                            WHERE table_name='centers' AND column_name='pi'""")
+                if cur.fetchone():
+                    cur.execute("ALTER TABLE centers RENAME COLUMN pi TO pi_name")
+                    print('[DB] centers.pi 重命名为 pi_name')
+                else:
+                    cur.execute("ALTER TABLE centers ADD COLUMN pi_name VARCHAR(255) DEFAULT ''")
+                
+                cur.execute("ALTER TABLE centers ADD COLUMN pi_phone VARCHAR(50) DEFAULT ''")
+                cur.execute("ALTER TABLE centers ADD COLUMN pi_email VARCHAR(255) DEFAULT ''")
+                cur.execute("ALTER TABLE centers ADD COLUMN contact_crc VARCHAR(255) DEFAULT ''")
+                cur.execute("ALTER TABLE centers ADD COLUMN contact_crc_phone VARCHAR(50) DEFAULT ''")
+                cur.execute("ALTER TABLE centers ADD COLUMN contact_ethics TEXT DEFAULT ''")
+                cur.execute("ALTER TABLE centers ADD COLUMN address TEXT DEFAULT ''")
+                print('[DB] centers 表已升级，添加新字段')
+        except Exception as e:
+            print(f'[DB] centers 表升级检查失败: {e}')
         
         conn.commit()
         print('[DB] 数据库表初始化完成')
