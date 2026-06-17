@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime, date
 from flask import Flask, render_template, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
+from io import BytesIO
+from openpyxl import Workbook
 
 import db
 
@@ -508,6 +510,70 @@ def backup_data():
         return Response(
             json_str,
             mimetype='application/json',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+# ========== 数据迁移 ==========
+
+# ========== 导出 Excel ==========
+
+@app.route('/api/export/<sheet_type>', methods=['GET'])
+def export_excel(sheet_type):
+    """导出指定类型数据为 Excel 文件"""
+    try:
+        wb = Workbook()
+        wb.remove(wb.active)
+
+        if sheet_type == 'tasks' or sheet_type == 'all':
+            ws = wb.create_sheet('待办事项')
+            ws.append(['ID', '标题', '项目ID', '中心ID', '优先级', '能力类型', '截止日期', '是否完成', '创建时间'])
+            tasks = db.get_tasks()
+            for t in tasks:
+                ws.append([t.get('id',''), t.get('title',''), t.get('project_id',''), t.get('center_id',''),
+                           t.get('priority',''), t.get('ability_type',''), t.get('due_date',''),
+                           '是' if t.get('done') else '否', str(t.get('created_at',''))])
+
+        if sheet_type == 'findings' or sheet_type == 'all':
+            ws = wb.create_sheet('监查问题')
+            ws.append(['ID', '问题编号', '项目ID', '中心ID', '描述', '分类', '严重程度', '状态', '发现日期', '截止日期', '纠正措施', '创建时间', '更新时间'])
+            findings = db.get_findings_all()
+            for f in findings:
+                ws.append([f.get('id',''), f.get('finding_number',''), f.get('project_id',''), f.get('center_id',''),
+                           f.get('description',''), f.get('category',''), f.get('severity',''), f.get('status',''),
+                           f.get('found_date',''), f.get('due_date',''), f.get('corrective_action',''),
+                           str(f.get('created_at','')), str(f.get('updated_at',''))])
+
+        if sheet_type == 'centers' or sheet_type == 'all':
+            ws = wb.create_sheet('中心信息')
+            ws.append(['ID', '项目ID', '中心编号', '中心名称', 'PI', '科室', '备注', '创建时间', '更新时间'])
+            centers = db.get_centers()
+            for c in centers:
+                ws.append([c.get('id',''), c.get('project_id',''), c.get('code',''), c.get('name',''),
+                           c.get('pi',''), c.get('department',''), c.get('notes',''),
+                           str(c.get('created_at','')), str(c.get('updated_at',''))])
+
+        if sheet_type == 'projects' or sheet_type == 'all':
+            ws = wb.create_sheet('项目信息')
+            ws.append(['ID', '名称', '编号', '阶段', '中心数', 'DBL日期', '备注', '创建时间', '更新时间'])
+            projects = db.get_projects()
+            for p in projects:
+                ws.append([p.get('id',''), p.get('name',''), p.get('code',''), p.get('stage',''),
+                           p.get('center_count',''), p.get('dbl_date',''), p.get('notes',''),
+                           str(p.get('created_at','')), str(p.get('updated_at',''))])
+
+        if sheet_type not in ['tasks', 'findings', 'centers', 'projects', 'all']:
+            return jsonify({"success": False, "error": f"未知导出类型: {sheet_type}"}), 400
+
+        buf = BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+
+        filename = f"cra-portal-{sheet_type}-{datetime.now().strftime('%Y%m%d')}.xlsx"
+        return Response(
+            buf.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             headers={'Content-Disposition': f'attachment; filename={filename}'}
         )
     except Exception as e:
