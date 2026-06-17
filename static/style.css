@@ -945,3 +945,15 @@ body {
     padding: 16px;
     text-align: center;
 }
+
+/* ====== 中心地图 ====== */
+.map-container {
+    height: 400px;
+    width: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 0;
+}
+@media (max-width: 600px) {
+    .map-container { height: 300px; }
+}
