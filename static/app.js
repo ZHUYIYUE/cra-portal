@@ -361,40 +361,66 @@ function renderCenters(centers, projectId) {
         const done = ms.filter(m => m.done).length;
         const total = ms.length;
         const pct = total > 0 ? Math.round(done / total * 100) : 0;
-        const barColor = pct === 100 ? '#27ae60' : pct >= 50 ? '#f39c12' : '#3498db';
+        
+        // 状态色条 — 100%绿 ≥50%橙 有Open问题红 其他蓝
+        const hasOpenIssue = (c.open_finding_count || 0) > 0;
+        const borderColor = pct === 100 ? '#27ae60' : hasOpenIssue ? '#e74c3c' : pct >= 50 ? '#f39c12' : '#3498db';
+        
+        // 任务/问题状态
+        const taskCount = c.task_count || 0;
+        const openFindings = c.open_finding_count || 0;
+        const findingCount = c.finding_count || 0;
+        
+        // PI 信息
+        const piName = c.pi_name || c.pi || '';
+        const dept = c.department || '';
         
         return `
-        <div style="padding:12px;border-bottom:1px solid #eee;background:#fafafa;">
-            <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCenterDetail('${c.id}')">
-                <div style="flex:1;">
-                    <strong style="color:#3498db;cursor:pointer;" onclick="openCenterDetail('${c.id}')">${escHtml(c.code)}</strong> - <span style="color:#3498db;cursor:pointer;" onclick="openCenterDetail('${c.id}')">${escHtml(c.name)}</span>
-                    ${c.pi ? `<span style="color:#666;font-size:0.85em;margin-left:8px;"><i class="fas fa-user-md"></i> ${escHtml(c.pi)}</span>` : ''}
-                    ${c.department ? `<span style="color:#888;font-size:0.85em;"> | ${escHtml(c.department)}</span>` : ''}
+        <div class="center-card" style="border-left:4px solid ${borderColor};">
+            <div class="center-card-header" onclick="toggleCenterDetail('${c.id}')">
+                <div class="center-card-title">
+                    <strong class="center-link" onclick="event.stopPropagation();openCenterDetail('${c.id}')">${escHtml(c.code)} ${escHtml(c.name)}</strong>
+                    ${piName || dept ? `<span class="center-meta">${piName ? '<i class="fas fa-user-md"></i> '+escHtml(piName) : ''}${piName && dept ? ' · ' : ''}${dept ? escHtml(dept) : ''}</span>` : ''}
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;">
-                    ${total > 0 ? `<span style="font-size:0.8em;color:#666;">${done}/${total}</span>
-                    <div style="width:60px;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden;">
-                        <div style="width:${pct}%;height:100%;background:${barColor};border-radius:3px;transition:width .3s;"></div>
-                    </div>` : ''}
-                    <i class="fas fa-chevron-down" id="icon-${c.id}" style="color:#999;font-size:0.8em;"></i>
+                <div class="center-card-right">
+                    ${total > 0 ? `<span class="center-pct ${pct === 100 ? 'pct-green' : pct >= 50 ? 'pct-orange' : 'pct-blue'}">${pct}%</span>` : '<span class="center-pct pct-gray">—</span>'}
+                    <i class="fas fa-chevron-down" id="icon-${c.id}" style="color:#ccc;font-size:0.8em;transition:transform .2s;"></i>
                 </div>
             </div>
-            <div id="detail-${c.id}" style="display:none;margin-top:10px;">
+            
+            <div class="center-card-stats">
+                <div class="cstat ${taskCount > 0 ? 'cstat-warn' : ''}">
+                    <span class="cstat-icon">📋</span>
+                    <span class="cstat-num">${taskCount}</span>
+                    <span class="cstat-label">待办</span>
+                </div>
+                <div class="cstat ${openFindings > 0 ? 'cstat-danger' : ''}">
+                    <span class="cstat-icon">⚠️</span>
+                    <span class="cstat-num">${openFindings}</span>
+                    <span class="cstat-label">问题</span>
+                </div>
+                <div class="cstat">
+                    <span class="cstat-icon">✅</span>
+                    <span class="cstat-num">${done}</span>
+                    <span class="cstat-label">/${total} 里程碑</span>
+                </div>
+            </div>
+            
+            <div id="detail-${c.id}" class="center-card-detail">
                 ${total > 0 ? `
-                <div style="background:#fff;border-radius:8px;padding:8px 12px;">
+                <div class="milestone-list">
                     ${ms.map((m, i) => {
                         const isOverdue = !m.done && m.date && new Date(m.date) < new Date();
                         const dateStr = m.date ? m.date.slice(5) : '';
                         return `
-                        <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;gap:8px;" >
+                        <div class="milestone-item ${m.done ? 'ms-done' : isOverdue ? 'ms-overdue' : ''}" >
                             <input type="checkbox" ${m.done ? 'checked' : ''} 
-                                style="width:18px;height:18px;cursor:pointer;accent-color:#27ae60;"
                                 onclick="event.stopPropagation(); toggleMilestone('${c.id}', ${i}, this.checked)" />
-                            <span style="flex:1;${m.done ? 'text-decoration:line-through;color:#999;' : isOverdue ? 'color:#e74c3c;font-weight:600;' : 'color:#333;'}">${escHtml(m.name)}</span>
-                            <span style="font-size:0.8em;color:${isOverdue ? '#e74c3c' : '#888'};white-space:nowrap;">${dateStr}${isOverdue ? ' ⚠️' : ''}${m.done && m.actual_date ? ' ✅'+m.actual_date.slice(5) : ''}</span>
+                            <span class="ms-name">${escHtml(m.name)}</span>
+                            <span class="ms-date ${isOverdue ? 'ms-date-overdue' : ''}">${dateStr}${isOverdue ? ' ⚠️' : ''}${m.done && m.actual_date ? ' ✅'+m.actual_date.slice(5) : ''}</span>
                         </div>`;
                     }).join('')}
-                </div>` : '<p style="color:#999;font-size:0.9em;padding:8px;">暂无里程碑</p>'}
+                </div>` : '<div class="ms-empty"><i class="fas fa-inbox"></i> 暂无里程碑</div>'}
             </div>
         </div>`;
     }).join('');
