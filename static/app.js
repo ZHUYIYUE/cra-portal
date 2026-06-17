@@ -1,4 +1,13 @@
-// CRA Portal 前端逻辑 - v2026-06-14-23
+// CRA Portal 前端逻辑 - v2026-06-18
+
+// 全局错误捕获（帮助定位白屏问题）
+window.onerror = function(msg, src, line, col, err) {
+    console.error('JS错误:', msg, '\n行:', line, '\n来源:', src);
+    var el = document.getElementById('pageContent');
+    if (el && !el.innerHTML.trim()) {
+        el.innerHTML = '<div style="padding:20px;color:#e74c3c;"><p>⚠️ 页面加载出错</p><pre style="font-size:12px;overflow:auto;">' + String(msg) + ' (行' + line + ')</pre></div>';
+    }
+};
 
 // 全局状态
 const state = {
@@ -221,9 +230,13 @@ async function loadDashboard(content) {
         </div>
     `;
     
-    // 初始化中心地图
+    // 初始化中心地图（失败不影响页面其他内容）
     if (centers.length > 0) {
-        initCenterMap(centers);
+        try { initCenterMap(centers); } catch(e) {
+            console.warn('地图初始化失败:', e);
+            const mapEl = document.getElementById('centerMap');
+            if (mapEl) mapEl.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 地图加载失败</p>';
+        }
     }
 }
 
