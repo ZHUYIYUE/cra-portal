@@ -570,6 +570,16 @@ def backup_data():
         
         json_str = json.dumps(backup_data, ensure_ascii=False, indent=2, default=str)
         filename = f"cra-portal-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        
+        # 自动保存到本地 backups 目录（供定时清理）
+        try:
+            backup_dir = os.path.join(os.path.dirname(__file__), 'backups')
+            os.makedirs(backup_dir, exist_ok=True)
+            with open(os.path.join(backup_dir, filename), 'w', encoding='utf-8') as f:
+                f.write(json_str)
+        except Exception:
+            pass  # 本地保存失败不影响下载
+        
         return Response(
             json_str,
             mimetype='application/json',
