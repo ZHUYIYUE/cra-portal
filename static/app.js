@@ -1631,19 +1631,59 @@ function renderCenterTabContent(tab, data) {
 
 // ---- Tab 1: 概览 ----
 function renderCenterTabOverview(el, c) {
-    el.innerHTML = `
-        <div class="card">
-            <div class="card-header"><i class="fas fa-info-circle"></i> 基本信息 <button class="btn btn-sm btn-primary" onclick="editCenterInfo('${c.id}')" style="margin-left:auto;">编辑</button></div>
-            <div class="detail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                ${c.pi_name ? `<div class="detail-item"><label>PI</label><span>${escHtml(c.pi_name)}</span></div>` : ''}
-                ${c.pi_phone ? `<div class="detail-item"><label>PI电话</label><span>${escHtml(c.pi_phone)}</span></div>` : ''}
-                ${c.pi_email ? `<div class="detail-item"><label>PI邮箱</label><span>${escHtml(c.pi_email)}</span></div>` : ''}
-                ${c.department ? `<div class="detail-item"><label>科室</label><span>${escHtml(c.department)}</span></div>` : ''}
-                ${c.contact_crc ? `<div class="detail-item"><label>CRC</label><span>${escHtml(c.contact_crc)}</span></div>` : ''}
-                ${c.contact_crc_phone ? `<div class="detail-item"><label>CRC电话</label><span>${escHtml(c.contact_crc_phone)}</span></div>` : ''}
+    const infoItem = (icon, bg, label, value) => value ? `
+        <div class="cd-info-card">
+            <div class="cd-info-icon" style="background:${bg};">${icon}</div>
+            <div class="cd-info-body">
+                <div class="cd-info-label">${label}</div>
+                <div class="cd-info-value">${escHtml(value)}</div>
             </div>
-            ${c.contact_ethics ? `<div style="margin-top:10px;padding:10px;background:#f8f9fa;border-radius:6px;font-size:0.9em;"><strong>伦理联系：</strong>${escHtml(c.contact_ethics).replace(/\\n/g,'<br>')}</div>` : ''}
-            ${c.address ? `<div style="margin-top:8px;font-size:0.9em;color:#666;"><i class="fas fa-map-marker-alt"></i> ${escHtml(c.address)}</div>` : ''}
+        </div>` : '';
+    el.innerHTML = `
+        <div class="cd-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div style="font-size:1.05em;font-weight:600;color:#2c3e50;"><i class="fas fa-hospital" style="color:#3498db;margin-right:6px;"></i>${escHtml(c.code||'')} ${escHtml(c.name||'')}</div>
+                <button class="btn btn-sm btn-primary" onclick="editCenterInfo('${c.id}')" style="border-radius:20px;padding:5px 14px;font-size:0.85em;"><i class="fas fa-edit"></i> 编辑</button>
+            </div>
+            ${c.pi_name || c.pi_phone || c.pi_email ? `
+                <div class="cd-section-title"><i class="fas fa-user-md"></i> 主要研究者</div>
+                <div class="cd-grid-2">
+                    ${infoItem('<i class="fas fa-user" style="color:#d46b08;"></i>', '#fff3e0', 'PI 姓名', c.pi_name)}
+                    ${infoItem('<i class="fas fa-phone" style="color:#2980b9;"></i>', '#e8f4fd', 'PI 电话', c.pi_phone)}
+                </div>
+                ${infoItem('<i class="fas fa-envelope" style="color:#722ed1;"></i>', '#f9f0ff', 'PI 邮箱', c.pi_email)}
+            ` : ''}
+            ${c.contact_crc || c.contact_crc_phone ? `
+                <div class="cd-section-title"><i class="fas fa-headset"></i> CRC 信息</div>
+                <div class="cd-grid-2">
+                    ${infoItem('<i class="fas fa-user-circle" style="color:#c62828;"></i>', '#fce4ec', 'CRC 姓名', c.contact_crc)}
+                    ${infoItem('<i class="fas fa-phone-alt" style="color:#2e7d32;"></i>', '#e8f5e9', 'CRC 电话', c.contact_crc_phone)}
+                </div>
+            ` : ''}
+            ${c.department ? `
+                <div class="cd-section-title"><i class="fas fa-stethoscope"></i> 机构信息</div>
+                ${infoItem('<i class="fas fa-building" style="color:#1565c0;"></i>', '#e3f2fd', '科室', c.department)}
+            ` : ''}
+            ${c.contact_ethics ? `
+                <div class="cd-section-title"><i class="fas fa-balance-scale"></i> 伦理联系</div>
+                <div class="cd-info-card" style="align-items:flex-start;">
+                    <div class="cd-info-icon" style="background:#fff7e6;"><i class="fas fa-clipboard-list" style="color:#d46b08;"></i></div>
+                    <div class="cd-info-body">
+                        <div class="cd-info-label">联系方式</div>
+                        <div class="cd-info-value" style="white-space:pre-line;line-height:1.6;">${escHtml(c.contact_ethics)}</div>
+                    </div>
+                </div>
+            ` : ''}
+            ${c.address ? `
+                <div class="cd-section-title"><i class="fas fa-map-marker-alt"></i> 地址</div>
+                ${infoItem('<i class="fas fa-map-pin" style="color:#e74c3c;"></i>', '#fff1f0', '医院地址', c.address)}
+            ` : ''}
+            ${!c.pi_name && !c.contact_crc && !c.department && !c.contact_ethics && !c.address ? `
+                <div class="cd-empty">
+                    <i class="fas fa-hospital"></i>
+                    暂无基本信息<br><small style="font-size:0.85em;">点击右上角「编辑」添加</small>
+                </div>
+            ` : ''}
         </div>
     `;
 }
@@ -1652,39 +1692,52 @@ function renderCenterTabOverview(el, c) {
 const STAFF_ROLES = ['PI', 'Sub-I', '研究护士', '药品管理员', 'CRC', '质控'];
 
 function renderCenterTabStaff(el, staffList, centerId) {
+    const certIcon = (collected, date) => collected
+        ? `<span class="cd-badge cd-badge-approved"><i class="fas fa-check-circle"></i> ${date || '已收'}</span>`
+        : `<span class="cd-badge cd-badge-open"><i class="fas fa-times-circle"></i> 未收</span>`;
     el.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-users"></i> 研究人员 (${staffList.length})
-                <button class="btn btn-sm btn-primary" onclick="openNewStaffForm('${centerId}')" style="margin-left:auto;">+ 新增人员</button>
+        <div class="cd-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div><span style="font-size:1em;font-weight:600;color:#2c3e50;"><i class="fas fa-users" style="color:#3498db;margin-right:6px;"></i>研究人员</span>
+                    <span style="background:#e8f4fd;color:#2980b9;padding:2px 8px;border-radius:10px;font-size:0.8em;margin-left:6px;">${staffList.length} 人</span>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="openNewStaffForm('${centerId}')" style="border-radius:20px;padding:5px 14px;font-size:0.85em;"><i class="fas fa-plus"></i> 新增</button>
             </div>
-            ${staffList.length === 0 ? '<p style="color:#999;padding:10px;">暂无人员记录</p>' :
-            `<table style="width:100%;border-collapse:collapse;font-size:0.9em;">
-                <thead><tr style="background:#f5f5f5;text-align:left;">
-                    <th style="padding:8px;">姓名</th><th>角色</th><th>电话</th><th>邮箱</th>
-                    <th>授权日期</th><th>GCP</th><th>证书/简历</th><th></th>
-                </tr></thead>
-                <tbody>
-                    ${staffList.map(s => `
-                        <tr style="border-bottom:1px solid #f0f0f0;">
-                            <td style="padding:8px;"><strong>${escHtml(s.name)}</strong>${s.initials ? `<br><small style="color:#888;">(${escHtml(s.initials)})</small>` : ''}</td>
-                            <td><span class="role-badge">${escHtml(s.role)}</span></td>
-                            <td>${escHtml(s.phone || '-')}</td>
-                            <td>${escHtml(s.email || '-')}</td>
-                            <td>${s.auth_date || '-'}</td>
-                            <td>${s.gcp_collected ? `<span style="color:#27ae60;">✓ ${s.gcp_date || ''}</span>` : '<span style="color:#e74c3c;">✗</span>'}</td>
+            ${staffList.length === 0 ? `
+                <div class="cd-empty">
+                    <i class="fas fa-user-friends"></i>
+                    暂无研究人员记录<br><small style="font-size:0.85em;">点击右上角「新增」添加</small>
+                </div>` :
+            `<div style="overflow-x:auto;border-radius:10px;border:1px solid #e8ecf0;">
+                <table class="cd-table">
+                    <thead><tr>
+                        <th>姓名 / 缩写</th><th>角色</th><th>联系方式</th>
+                        <th>授权日期</th><th>GCP</th><th>简历</th><th>执照</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                        ${staffList.map(s => `
+                        <tr>
                             <td>
-                                ${s.cv_collected ? `<span style="color:#27ae60;">简历</span>` : ''}
-                                ${s.license_collected ? `<br><span style="color:#27ae60;">执照 ${s.license_date || ''}</span>` : ''}
-                                ${!s.cv_collected && !s.license_collected ? '<span style="color:#e74c3c;">未收集</span>' : ''}
+                                <div style="font-weight:600;color:#2c3e50;">${escHtml(s.name)}</div>
+                                ${s.initials ? `<div style="font-size:0.8em;color:#8896a4;">(${escHtml(s.initials)})</div>` : ''}
                             </td>
-                            <td style="text-align:right;">
-                                <button class="btn btn-text btn-sm" onclick="editStaffMember('${s.id}')"><i class="fas fa-edit"></i></button>
-                                <button class="btn btn-text btn-sm" onclick="deleteStaffMember('${s.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                            <td><span class="role-badge ${escHtml(s.role)}">${escHtml(s.role)}</span></td>
+                            <td>
+                                ${s.phone ? `<div style="display:flex;align-items:center;gap:4px;font-size:0.85em;"><i class="fas fa-phone" style="color:#8896a4;"></i>${escHtml(s.phone)}</div>` : ''}
+                                ${s.email ? `<div style="display:flex;align-items:center;gap:4px;font-size:0.8em;color:#8896a4;margin-top:2px;"><i class="fas fa-envelope" style="color:#8896a4;"></i>${escHtml(s.email)}</div>` : ''}
+                            </td>
+                            <td>${s.auth_date ? `<span style="color:#2c3e50;">${s.auth_date}</span>` : '<span style="color:#bcc4ce;">—</span>'}</td>
+                            <td>${certIcon(s.gcp_collected, s.gcp_date)}</td>
+                            <td>${certIcon(s.cv_collected, s.cv_date)}</td>
+                            <td>${certIcon(s.license_collected, s.license_date)}</td>
+                            <td>
+                                <button class="btn btn-text btn-sm" onclick="editStaffMember('${s.id}')" title="编辑" style="padding:4px 6px;"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-text btn-sm" onclick="deleteStaffMember('${s.id}')" title="删除" style="padding:4px 6px;"><i class="fas fa-trash" style="color:#cf1322;"></i></button>
                             </td>
                         </tr>`).join('')}
-                </tbody>
-            </table>`}
+                    </tbody>
+                </table>
+            </div>`}
         </div>
     `;
 }
@@ -1694,37 +1747,55 @@ const ETHICS_TYPES = ['初始伦理', '修正案', '方案偏离', '备案类文
 const REVIEW_METHODS = ['会议审查', '快审', '备案'];
 
 function renderCenterTabEthics(el, ethicsList, centerId) {
+    const typeColor = t => {
+        const m = {'初始伦理':'#d46b08','修正案':'#722ed1','方案偏离':'#cf1322','备案类文件':'#1890ff','SAE报告':'#d46b08','年度报告':'#389e0d','结题报告':'#1d39c4'};
+        return m[t] || '#5a6a7a';
+    };
+    const docTypeBadge = t => t ? `<span style="background:${typeColor(t)}22;color:${typeColor(t)};padding:2px 8px;border-radius:4px;font-size:0.82em;font-weight:600;">${escHtml(t)}</span>` : '-';
+    const approvalBadge = d => d
+        ? `<span class="cd-badge cd-badge-approved"><i class="fas fa-check"></i> ${d}</span>`
+        : `<span class="cd-badge cd-badge-pending"><i class="fas fa-clock"></i> 待批</span>`;
     el.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-file-alt"></i> 伦理递交 (${ethicsList.length})
-                <button class="btn btn-sm btn-primary" onclick="openNewEthicsForm('${centerId}')" style="margin-left:auto;">+ 新增递交</button>
+        <div class="cd-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div><span style="font-size:1em;font-weight:600;color:#2c3e50;"><i class="fas fa-file-alt" style="color:#3498db;margin-right:6px;"></i>伦理递交</span>
+                    <span style="background:#e8f4fd;color:#2980b9;padding:2px 8px;border-radius:10px;font-size:0.8em;margin-left:6px;">${ethicsList.length} 条</span>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="openNewEthicsForm('${centerId}')" style="border-radius:20px;padding:5px 14px;font-size:0.85em;"><i class="fas fa-plus"></i> 新增</button>
             </div>
-            ${ethicsList.length === 0 ? '<p style="color:#999;padding:10px;">暂无递交记录</p>' :
-            `<table style="width:100%;border-collapse:collapse;font-size:0.85em;">
-                <thead><tr style="background:#f5f5f5;text-align:left;">
-                    <th style="padding:8px;">类型</th><th>文件名称</th><th>版本</th><th>版本日期</th>
-                    <th>PI签收</th><th>伦理递交</th><th>审查方式</th><th>审查日期</th><th>批件日期</th><th></th>
-                </tr></thead>
-                <tbody>
-                    ${ethicsList.map(e => `
-                        <tr style="border-bottom:1px solid #f0f0f0;">
-                            <td style="padding:8px;"><strong>${escHtml(e.doc_type || '-')}</strong></td>
-                            <td>${escHtml(e.doc_name || '-')}</td>
-                            <td>${escHtml(e.version || '-')}</td>
-                            <td>${e.version_date || '-'}</td>
-                            <td>${e.pi_sign_date || '-'}</td>
-                            <td>${e.submission_date || '-'}</td>
-                            <td>${escHtml(e.review_method || '-')}</td>
-                            <td>${e.review_date || '-'}</td>
-                            <td style="color:${e.approval_date ? '#27ae60' : '#e74c3c'};">${e.approval_date || '待批'}</td>
-                            <td style="text-align:right;">
-                                <button class="btn btn-text btn-sm" onclick="editEthicsSubmission('${e.id}')"><i class="fas fa-edit"></i></button>
-                                <button class="btn btn-text btn-sm" onclick="deleteEthicsSubmission('${e.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+            ${ethicsList.length === 0 ? `
+                <div class="cd-empty">
+                    <i class="fas fa-folder-open"></i>
+                    暂无伦理递交记录<br><small style="font-size:0.85em;">点击右上角「新增」添加</small>
+                </div>` :
+            `<div style="overflow-x:auto;border-radius:10px;border:1px solid #e8ecf0;">
+                <table class="cd-table">
+                    <thead><tr>
+                        <th>文件类型</th><th>文件名称</th><th>版本/日期</th><th>PI签收</th><th>递交/审查</th><th>批件</th><th></th>
+                    </tr></thead>
+                    <tbody>
+                        ${ethicsList.map(e => `
+                        <tr>
+                            <td>${docTypeBadge(e.doc_type)}</td>
+                            <td><div style="font-weight:500;color:#2c3e50;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(e.doc_name||'')}">${escHtml(e.doc_name || '-')}</div></td>
+                            <td>
+                                <div style="font-size:0.88em;">${e.version || '<span style=color:#bcc4ce>—</span>'}</div>
+                                ${e.version_date ? `<div style="font-size:0.78em;color:#8896a4;">${e.version_date}</div>` : ''}
+                            </td>
+                            <td>${e.pi_sign_date ? `<span style="font-size:0.85em;">${e.pi_sign_date}</span>` : '<span style="color:#bcc4ce;">—</span>'}</td>
+                            <td>
+                                <div style="font-size:0.85em;">${e.review_method || '<span style=color:#bcc4ce>—</span>'}</div>
+                                ${e.submission_date ? `<div style="font-size:0.78em;color:#8896a4;">${e.submission_date}</div>` : ''}
+                            </td>
+                            <td>${approvalBadge(e.approval_date)}</td>
+                            <td>
+                                <button class="btn btn-text btn-sm" onclick="editEthicsSubmission('${e.id}')" title="编辑" style="padding:4px 6px;"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-text btn-sm" onclick="deleteEthicsSubmission('${e.id}')" title="删除" style="padding:4px 6px;"><i class="fas fa-trash" style="color:#cf1322;"></i></button>
                             </td>
                         </tr>`).join('')}
-                </tbody>
-            </table>`}
+                    </tbody>
+                </table>
+            </div>`}
         </div>
     `;
 }
@@ -1735,36 +1806,40 @@ const PD_STATUSES = ['Open', 'Closed'];
 
 function renderCenterTabPDs(el, pdsList, centerId) {
     el.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-exclamation-triangle"></i> 方案偏离 (${pdsList.length})
-                <button class="btn btn-sm btn-primary" onclick="openNewPDForm('${centerId}')" style="margin-left:auto;">+ 新增偏离</button>
+        <div class="cd-section">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+                <div><span style="font-size:1em;font-weight:600;color:#2c3e50;"><i class="fas fa-exclamation-triangle" style="color:#f39c12;margin-right:6px;"></i>方案偏离</span>
+                    <span style="background:#fff3e0;color:#d46b08;padding:2px 8px;border-radius:10px;font-size:0.8em;margin-left:6px;">${pdsList.length} 条</span>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="openNewPDForm('${centerId}')" style="border-radius:20px;padding:5px 14px;font-size:0.85em;"><i class="fas fa-plus"></i> 新增</button>
             </div>
-            ${pdsList.length === 0 ? '<p style="color:#999;padding:10px;">暂无方案偏离记录</p>' :
+            ${pdsList.length === 0 ? `
+                <div class="cd-empty">
+                    <i class="fas fa-shield-alt"></i>
+                    无方案偏离记录<br><small style="font-size:0.85em;">良好依从性，继续保持 ✓</small>
+                </div>` :
             pdsList.map(pd => `
-                <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:12px;overflow:hidden;">
-                    <div style="background:${pd.severity === 'Major' ? '#fff3e0' : '#e8f5e9'};padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                        <span style="background:${pd.severity === 'Major' ? '#ff9800' : '#4CAF50'};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em;">${pd.severity}</span>
-                        <strong>${escHtml(pd.pd_number)}</strong>
-                        <span style="margin-left:auto;color:#888;font-size:0.85em;">
-                            ${pd.occurred_date ? '发生: ' + pd.occurred_date : ''}
-                        </span>
-                        <span style="padding:2px 8px;border-radius:4px;font-size:0.8em;background:${pd.status === 'Open' ? '#e74c3c' : '#27ae60'};color:#fff;">${pd.status}</span>
+                <div class="cd-pd-card">
+                    <div class="cd-pd-header" style="background:${pd.severity==='Major'?'#fff7e6':'#f6ffed'};">
+                        <span class="cd-badge ${pd.severity==='Major'?'cd-badge-major':'cd-badge-minor'}">${pd.severity}</span>
+                        <strong style="font-size:0.95em;color:#2c3e50;">${escHtml(pd.pd_number)}</strong>
+                        <span class="cd-badge ${pd.status==='Open'?'cd-badge-open':'cd-badge-closed'}" style="margin-left:auto;">${pd.status}</span>
                     </div>
-                    <div style="padding:12px 16px;font-size:0.9em;">
-                        <div style="margin-bottom:6px;"><strong>偏离描述：</strong>${escHtml(pd.description || '-')}</div>
-                        <div style="margin-bottom:6px;"><strong>违反条款：</strong>${escHtml(pd.violated_clause || '-')}</div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.85em;color:#555;">
-                            <div><i class="fas fa-search"></i> 发现日期：${pd.discovered_date || '-'}</div>
-                            <div><i class="fas fa-building"></i> 上报申办方：${pd.reported_sponsor_date || '-'}</div>
-                            <div><i class="fas fa-hospital-o"></i> 上报伦理：${pd.reported_ethics_date || '-'}</div>
-                            <div><i class="fas fa-user"></i> 涉及人员：${escHtml(pd.subject_ids || '-')}</div>
+                    <div class="cd-pd-body">
+                        ${pd.description ? `<div class="cd-pd-desc"><i class="fas fa-quote-left" style="color:#bcc4ce;margin-right:4px;font-size:0.8em;"></i>${escHtml(pd.description)}</div>` : ''}
+                        ${pd.violated_clause ? `<div style="font-size:0.82em;color:#8896a4;margin-bottom:10px;"><i class="fas fa-ban" style="color:#cf1322;margin-right:4px;"></i>违反方案：${escHtml(pd.violated_clause)}</div>` : ''}
+                        <div class="cd-pd-meta">
+                            ${pd.occurred_date ? `<div class="cd-pd-meta-item"><i class="fas fa-calendar-plus"></i>发生：${pd.occurred_date}</div>` : ''}
+                            ${pd.discovered_date ? `<div class="cd-pd-meta-item"><i class="fas fa-search"></i>发现：${pd.discovered_date}</div>` : ''}
+                            ${pd.reported_sponsor_date ? `<div class="cd-pd-meta-item"><i class="fas fa-building"></i>上报申办方：${pd.reported_sponsor_date}</div>` : ''}
+                            ${pd.reported_ethics_date ? `<div class="cd-pd-meta-item"><i class="fas fa-balance-scale"></i>上报伦理：${pd.reported_ethics_date}</div>` : ''}
                         </div>
-                        ${pd.corrective_action ? `<div style="margin-top:8px;padding:8px;background:#f8f9fa;border-radius:6px;"><strong>整改措施：</strong>${escHtml(pd.corrective_action)}</div>` : ''}
+                        ${pd.subject_ids ? `<div style="margin-top:8px;font-size:0.82em;color:#5a6a7a;"><i class="fas fa-user-tag" style="color:#8896a4;margin-right:4px;"></i>涉及：${escHtml(pd.subject_ids)}</div>` : ''}
+                        ${pd.corrective_action ? `<div class="cd-pd-action"><i class="fas fa-tools" style="color:#d46b08;margin-right:4px;"></i><strong>整改：</strong>${escHtml(pd.corrective_action)}</div>` : ''}
                     </div>
-                    <div style="padding:8px 16px;border-top:1px solid #f0f0f0;text-align:right;">
-                        <button class="btn btn-text btn-sm" onclick="editProtocolDeviation('${pd.id}')"><i class="fas fa-edit"></i> 编辑</button>
-                        <button class="btn btn-text btn-sm" onclick="deleteProtocolDeviation('${pd.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i> 删除</button>
+                    <div style="padding:8px 16px;border-top:1px solid #f2f4f7;display:flex;justify-content:flex-end;gap:6px;">
+                        <button class="btn btn-text btn-sm" onclick="editProtocolDeviation('${pd.id}')" style="font-size:0.85em;"><i class="fas fa-edit"></i> 编辑</button>
+                        <button class="btn btn-text btn-sm" onclick="deleteProtocolDeviation('${pd.id}')" style="font-size:0.85em;color:#cf1322;"><i class="fas fa-trash"></i> 删除</button>
                     </div>
                 </div>`).join('')}
         </div>
@@ -1773,32 +1848,50 @@ function renderCenterTabPDs(el, pdsList, centerId) {
 
 // ---- Tab 5: 关联数据 ----
 function renderCenterTabLinks(el, tasks, findings, centerId, today) {
+    const sevColor = s => s==='Critical'?'#cf1322':s==='Major'?'#d46b08':'#389e0d';
+    const prioColor = p => p==='high'?'#cf1322':p==='medium'?'#d46b08':'#389e0d';
+    const openTasks = tasks.filter(t => !t.done);
+    const doneTasks = tasks.filter(t => t.done);
     el.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-tasks"></i> 待办事项 (${tasks.length})
-                    <button class="btn btn-sm btn-primary" onclick="navigateTo('tasks')" style="margin-left:auto;">查看全部</button>
+        <div class="cd-section">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="cd-link-card">
+                    <div class="cd-link-card-header" style="color:#2c3e50;">
+                        <i class="fas fa-tasks" style="color:#3498db;"></i> 待办事项
+                        <span style="margin-left:auto;font-size:0.8em;color:#8896a4;">${openTasks.length} 进行中</span>
+                        <button class="btn btn-text btn-sm" onclick="navigateTo('tasks')" style="font-size:0.8em;padding:2px 8px;">全部 →</button>
+                    </div>
+                    ${tasks.length === 0 ? `
+                        <div class="cd-empty" style="padding:20px 16px;"><i class="fas fa-check-circle" style="color:#389e0d;"></i>暂无待办</div>` :
+                    tasks.slice(0, 8).map(t => `
+                        <div class="cd-link-item">
+                            <div class="cd-link-dot" style="background:${prioColor(t.priority)};"></div>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:0.88em;${t.done?'text-decoration:line-through;color:#bcc4ce;':'color:#2c3e50;'}">${escHtml(t.title)}</div>
+                                ${t.due_date ? `<div style="font-size:0.78em;color:#8896a4;margin-top:1px;">${t.due_date}</div>` : ''}
+                            </div>
+                            ${t.due_date && t.due_date < today && !t.done ? `<span class="cd-badge cd-badge-open" style="font-size:0.75em;padding:1px 5px;">逾期</span>` : ''}
+                            ${t.done ? `<span class="cd-badge cd-badge-closed" style="font-size:0.75em;padding:1px 5px;"><i class="fas fa-check"></i></span>` : ''}
+                        </div>`).join('')}
                 </div>
-                ${tasks.length === 0 ? '<p style="color:#999;padding:10px;">暂无待办</p>' :
-                tasks.slice(0, 10).map(t => `
-                    <div style="padding:8px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;">
-                        <span style="color:${t.priority === 'high' ? '#e74c3c' : t.priority === 'medium' ? '#f39c12' : '#27ae60'};">●</span>
-                        <span style="flex:1;font-size:0.9em;${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${escHtml(t.title)}</span>
-                        ${t.due_date && t.due_date < today && !t.done ? '<span style="color:#e74c3c;font-size:0.8em;">⚠️逾期</span>' : ''}
-                    </div>`).join('')}
-            </div>
-            <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-search"></i> 监查问题 (${findings.length})
-                    <button class="btn btn-sm btn-primary" onclick="navigateTo('findings')" style="margin-left:auto;">查看全部</button>
+                <div class="cd-link-card">
+                    <div class="cd-link-card-header" style="color:#2c3e50;">
+                        <i class="fas fa-search" style="color:#722ed1;"></i> 监查问题
+                        <span style="margin-left:auto;font-size:0.8em;color:#8896a4;">${findings.filter(f=>f.status!=='Closed').length} Open</span>
+                        <button class="btn btn-text btn-sm" onclick="navigateTo('findings')" style="font-size:0.8em;padding:2px 8px;">全部 →</button>
+                    </div>
+                    ${findings.length === 0 ? `
+                        <div class="cd-empty" style="padding:20px 16px;"><i class="fas fa-shield-alt" style="color:#389e0d;"></i>暂无问题</div>` :
+                    findings.slice(0, 8).map(f => `
+                        <div class="cd-link-item">
+                            <span class="cd-badge" style="background:${sevColor(f.severity)}22;color:${sevColor(f.severity)};font-size:0.75em;padding:2px 6px;flex-shrink:0;">${f.severity}</span>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:0.85em;color:#2c3e50;">${escHtml(f.finding_number)}</div>
+                                <div style="font-size:0.78em;color:#8896a4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(f.description||'')}</div>
+                            </div>
+                            <span class="cd-badge ${f.status==='Closed'?'cd-badge-closed':'cd-badge-open'}" style="font-size:0.72em;flex-shrink:0;">${f.status}</span>
+                        </div>`).join('')}
                 </div>
-                ${findings.length === 0 ? '<p style="color:#999;padding:10px;">暂无问题</p>' :
-                findings.slice(0, 10).map(f => `
-                    <div style="padding:8px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;">
-                        <span style="background:${f.severity === 'Critical' ? '#e74c3c' : f.severity === 'Major' ? '#f39c12' : '#27ae60'};color:#fff;padding:2px 6px;border-radius:3px;font-size:0.75em;">${f.severity}</span>
-                        <span style="font-size:0.85em;flex:1;">${escHtml(f.finding_number)} - ${escHtml((f.description || '').slice(0, 30))}</span>
-                    </div>`).join('')}
             </div>
         </div>
     `;
