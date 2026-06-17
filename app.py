@@ -479,44 +479,37 @@ def backup_data():
         if not conn:
             return jsonify({"success": False, "error": "数据库连接失败"}), 500
         cursor = conn.cursor()
-    
-    # 获取所有表名
-    cursor.execute("""
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public'
-    """)
-    tables = [row[0] for row in cursor.fetchall()]
-    
-    backup_data = {
-        "backup_time": datetime.now().isoformat(),
-        "tables": {}
-    }
-    
-    # 逐个表导出数据
-    for table in tables:
-        cursor.execute(f"SELECT * FROM {table}")
-        columns = [desc[0] for desc in cursor.description]
-        rows = cursor.fetchall()
+
+        # 硬编码表名（避免 information_schema 权限问题）
+        known_tables = ['projects', 'tasks', 'centers', 'findings', 'start_logs']
         
-        backup_data["tables"][table] = {
-            "columns": columns,
-            "rows": [dict(zip(columns, row)) for row in rows]
+        backup_data = {
+            "backup_time": datetime.now().isoformat(),
+            "tables": {}
         }
-    
-    cursor.close()
-    conn.close()
-    
-    # 转换为 JSON 字符串
-    json_str = json.dumps(backup_data, ensure_ascii=False, indent=2, default=str)
-    
-    # 返回文件下载
-    filename = f"cra-portal-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
-    return Response(
-        json_str,
-        mimetype='application/json',
-        headers={'Content-Disposition': f'attachment; filename={filename}'}
-    )
+        
+        for table in known_tables:
+            try:
+                cursor.execute(f'SELECT * FROM "{table}"')
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                backup_data["tables"][table] = {
+                    "columns": columns,
+                    "rows": [dict(zip(columns, row)) for row in rows]
+                }
+            except Exception:
+                pass  # 表不存在则跳过
+        
+        cursor.close()
+        conn.close()
+        
+        json_str = json.dumps(backup_data, ensure_ascii=False, indent=2, default=str)
+        filename = f"cra-portal-backup-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+        return Response(
+            json_str,
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment; filename={filename}'}
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
