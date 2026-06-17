@@ -526,31 +526,45 @@ def export_excel(sheet_type):
         wb = Workbook()
         wb.remove(wb.active)
 
+        # 构建项目/中心名称查找表
+        projects_map = {p['id']: p.get('name', p['id']) for p in db.get_projects()}
+        centers_map = {c['id']: c.get('name', c['id']) for c in db.get_centers()}
+
         if sheet_type == 'tasks' or sheet_type == 'all':
             ws = wb.create_sheet('待办事项')
-            ws.append(['ID', '标题', '项目ID', '中心ID', '优先级', '能力类型', '截止日期', '是否完成', '创建时间'])
+            ws.append(['ID', '标题', '项目', '中心', '优先级', '能力类型', '截止日期', '是否完成', '创建时间'])
             tasks = db.get_tasks()
             for t in tasks:
-                ws.append([t.get('id',''), t.get('title',''), t.get('project_id',''), t.get('center_id',''),
+                pid = t.get('project_id','')
+                cid = t.get('center_id','')
+                p_name = projects_map.get(pid, pid) if pid else ''
+                c_name = centers_map.get(cid, cid) if cid else ''
+                ws.append([t.get('id',''), t.get('title',''), p_name, c_name,
                            t.get('priority',''), t.get('ability_type',''), t.get('due_date',''),
                            '是' if t.get('done') else '否', str(t.get('created_at',''))])
 
         if sheet_type == 'findings' or sheet_type == 'all':
             ws = wb.create_sheet('监查问题')
-            ws.append(['ID', '问题编号', '项目ID', '中心ID', '描述', '分类', '严重程度', '状态', '发现日期', '截止日期', '纠正措施', '创建时间', '更新时间'])
+            ws.append(['ID', '问题编号', '项目', '中心', '描述', '分类', '严重程度', '状态', '发现日期', '截止日期', '纠正措施', '创建时间', '更新时间'])
             findings = db.get_findings_all()
             for f in findings:
-                ws.append([f.get('id',''), f.get('finding_number',''), f.get('project_id',''), f.get('center_id',''),
+                pid = f.get('project_id','')
+                cid = f.get('center_id','')
+                p_name = projects_map.get(pid, pid) if pid else ''
+                c_name = centers_map.get(cid, cid) if cid else ''
+                ws.append([f.get('id',''), f.get('finding_number',''), p_name, c_name,
                            f.get('description',''), f.get('category',''), f.get('severity',''), f.get('status',''),
                            f.get('found_date',''), f.get('due_date',''), f.get('corrective_action',''),
                            str(f.get('created_at','')), str(f.get('updated_at',''))])
 
         if sheet_type == 'centers' or sheet_type == 'all':
             ws = wb.create_sheet('中心信息')
-            ws.append(['ID', '项目ID', '中心编号', '中心名称', 'PI', '科室', '备注', '创建时间', '更新时间'])
+            ws.append(['ID', '项目', '中心编号', '中心名称', 'PI', '科室', '备注', '创建时间', '更新时间'])
             centers = db.get_centers()
             for c in centers:
-                ws.append([c.get('id',''), c.get('project_id',''), c.get('code',''), c.get('name',''),
+                pid = c.get('project_id','')
+                p_name = projects_map.get(pid, pid) if pid else ''
+                ws.append([c.get('id',''), p_name, c.get('code',''), c.get('name',''),
                            c.get('pi',''), c.get('department',''), c.get('notes',''),
                            str(c.get('created_at','')), str(c.get('updated_at',''))])
 
