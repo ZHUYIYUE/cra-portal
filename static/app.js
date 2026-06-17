@@ -2930,10 +2930,13 @@ const _cityCoords = {
 
 /** 根据中心名称解析城市 */
 function _getCenterCity(name) {
+    // 直接匹配
     for (const [city] of Object.entries(_cityCoords)) {
         if (name.includes(city)) return city;
     }
-    // 特殊映射：粤北→韶关
+    // 特殊映射：医院名不含城市名
+    if (name.includes('浙大') || name.includes('浙二') || name.includes('浙江大学')) return '杭州';
+    if (name.includes('苏北')) return '扬州';
     if (name.includes('粤北')) return '韶关';
     return null;
 }
@@ -2943,6 +2946,12 @@ let _centerMap = null;
 function initCenterMap(centers) {
     const el = document.getElementById('centerMap');
     if (!el) return;
+    
+    // 安全检查：Leaflet 是否加载
+    if (typeof L === 'undefined') {
+        el.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 地图组件加载中，请稍候刷新</p>';
+        return;
+    }
     
     // 清理旧地图
     if (_centerMap) {
