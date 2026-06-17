@@ -132,6 +132,8 @@ body {
 .stat-green i { color: #27ae60; } .stat-green .stat-num { color: #27ae60; }
 .stat-orange i { color: #f39c12; } .stat-orange .stat-num { color: #f39c12; }
 .stat-red i { color: #e74c3c; } .stat-red .stat-num { color: #e74c3c; }
+.stat-yellow i { color: #f39c12; } .stat-yellow .stat-num { color: #f39c12; }
+.stat-purple i { color: #9b59b6; } .stat-purple .stat-num { color: #9b59b6; }
 
 /* ====== 警告横幅 ====== */
 .alert-banner {
