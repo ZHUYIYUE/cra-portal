@@ -1565,6 +1565,10 @@ async function loadCenterDetail(content) {
 
     const center = centerData.center || {};
     const today = new Date().toISOString().split('T')[0];
+
+    // 缓存数据，避免切换 Tab 重复请求
+    window._cdc = { center, staff, ethics, pds, centerTasks, centerFindings, today };
+
     if (!state.centerDetailTab) state.centerDetailTab = '概览';
 
     content.innerHTML = `
@@ -1586,35 +1590,33 @@ async function loadCenterDetail(content) {
         </div>
     `;
 
-    renderCenterTabContent('概览', { center, staff, ethics, pds, centerTasks, centerFindings, today });
+    renderCenterTabContent('概览', window._cdc);
 }
 
 function switchCenterTab(tab, btn) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     state.centerDetailTab = tab;
+    // 直接用缓存数据，无需重新请求
+    renderCenterTabContent(tab, window._cdc || {});
+}
+
+// 切换 Tab 后从缓存重新渲染（不请求 API）
+function refreshTabFromCache(tab) {
+    renderCenterTabContent(tab, window._cdc || {});
+}
+
+// 缓存刷新：只重新拉取单个模块数据，更新缓存后刷新当前 Tab
+async function refreshCacheAndTab(tabs) {
     const centerId = state.currentCenterId;
-    Promise.all([
-        fetch(`/api/center/${centerId}`),
-        fetch(`/api/staff?center_id=${centerId}`),
-        fetch(`/api/ethics?center_id=${centerId}`),
-        fetch(`/api/pds?center_id=${centerId}`),
-        fetch(`/api/tasks?center_id=${centerId}`),
-        fetch(`/api/findings`)
-    ]).then(async ([cr, sr, er, pr, tr, fr]) => {
-        const centerData = await cr.json();
-        const staff = (await sr.json()).staff || [];
-        const ethics = (await er.json()).ethics || [];
-        const pds = (await pr.json()).pds || [];
-        const centerTasks = (await tr.json()).tasks || [];
-        const allFindings = (await fr.json()).findings || [];
-        const centerFindings = allFindings.filter(f => f.center_id === centerId);
-        renderCenterTabContent(tab, {
-            center: centerData.center || {},
-            staff, ethics, pds, centerTasks, centerFindings,
-            today: new Date().toISOString().split('T')[0]
-        });
-    });
+    const needs = [];
+    if (tabs.includes('staff')) needs.push(fetch(`/api/staff?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.staff = d.staff || []; }));
+    if (tabs.includes('ethics')) needs.push(fetch(`/api/ethics?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.ethics = d.ethics || []; }));
+    if (tabs.includes('pds')) needs.push(fetch(`/api/pds?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.pds = d.pds || []; }));
+    if (tabs.includes('tasks')) needs.push(fetch(`/api/tasks?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.centerTasks = d.tasks || []; }));
+    if (tabs.includes('findings')) needs.push(fetch(`/api/findings`).then(r => r.json()).then(d => { window._cdc.centerFindings = (d.findings || []).filter(f => f.center_id === centerId); }));
+    await Promise.all(needs);
+    refreshTabFromCache(state.centerDetailTab);
 }
 
 function renderCenterTabContent(tab, data) {
@@ -1875,7 +1877,7 @@ async function submitStaffForm(e, editId) {
     const url = editId ? `/api/staff/${editId}` : '/api/staff';
     const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (data.success) { closeModal(); switchCenterTab('研究人员', document.querySelector('.tab-btn.active')); }
+    if (data.success) { closeModal(); refreshCacheAndTab(['staff']); }
     else alert('保存失败');
 }
 
@@ -1930,7 +1932,7 @@ async function editStaffMember(staffId) {
 async function deleteStaffMember(staffId) {
     if (!confirm('确定删除该人员？')) return;
     await fetch(`/api/staff/${staffId}`, { method: 'DELETE' });
-    switchCenterTab('研究人员', document.querySelector('.tab-btn.active'));
+    refreshCacheAndTab(['staff']);
 }
 
 // ---- 伦理递交表单 ----
@@ -1994,7 +1996,7 @@ async function submitEthicsForm(e, editId) {
     const url = editId ? `/api/ethics/${editId}` : '/api/ethics';
     const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (data.success) { closeModal(); switchCenterTab('伦理递交', document.querySelector('.tab-btn.active')); }
+    if (data.success) { closeModal(); refreshCacheAndTab(['ethics']); }
     else alert('保存失败');
 }
 
@@ -2047,7 +2049,7 @@ async function editEthicsSubmission(subId) {
 async function deleteEthicsSubmission(subId) {
     if (!confirm('确定删除该递交记录？')) return;
     await fetch(`/api/ethics/${subId}`, { method: 'DELETE' });
-    switchCenterTab('伦理递交', document.querySelector('.tab-btn.active'));
+    refreshCacheAndTab(['ethics']);
 }
 
 // ---- 方案偏离表单 ----
@@ -2101,7 +2103,7 @@ async function submitPDFormNew(e) {
     };
     const res = await fetch('/api/pds', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (data.success) { closeModal(); switchCenterTab('方案偏离', document.querySelector('.tab-btn.active')); }
+    if (data.success) { closeModal(); refreshCacheAndTab(['pds']); }
     else alert('保存失败');
 }
 
@@ -2167,14 +2169,14 @@ async function submitPDFormEdit(e, pdId) {
     };
     const res = await fetch(`/api/pds/${pdId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (data.success) { closeModal(); switchCenterTab('方案偏离', document.querySelector('.tab-btn.active')); }
+    if (data.success) { closeModal(); refreshCacheAndTab(['pds']); }
     else alert('保存失败');
 }
 
 async function deleteProtocolDeviation(pdId) {
     if (!confirm('确定删除该方案偏离记录？')) return;
     await fetch(`/api/pds/${pdId}`, { method: 'DELETE' });
-    switchCenterTab('方案偏离', document.querySelector('.tab-btn.active'));
+    refreshCacheAndTab(['pds']);
 }
 // ========== 监查问题页面 ==========
 
