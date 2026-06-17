@@ -474,8 +474,11 @@ def get_stats():
 @app.route('/api/backup', methods=['GET', 'POST'])
 def backup_data():
     """导出所有数据为 JSON 文件"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
+    try:
+        conn = db.get_connection()
+        if not conn:
+            return jsonify({"success": False, "error": "数据库连接失败"}), 500
+        cursor = conn.cursor()
     
     # 获取所有表名
     cursor.execute("""
@@ -514,6 +517,8 @@ def backup_data():
         mimetype='application/json',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # ========== 数据迁移 ==========
 
