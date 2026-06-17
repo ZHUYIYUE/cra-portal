@@ -133,15 +133,19 @@ async function loadPage(page) {
 // ========== 总览页面 ==========
 
 async function loadDashboard(content) {
-    const [statsRes, projectsRes] = await Promise.all([
-        fetch('/api/stats'), fetch('/api/projects')
+    const [statsRes, projectsRes, centersRes] = await Promise.all([
+        fetch('/api/stats'), fetch('/api/projects'), fetch('/api/centers')
     ]);
     const stats = await statsRes.json();
     const projData = await projectsRes.json();
+    const centersData = await centersRes.json();
     
     state.projects = projData.projects || [];
+    const centers = centersData.centers || [];
     
     const s = stats.stats || {};
+    const centerProgress = s.center_progress || [];
+    
     content.innerHTML = `
         <div class="stats-grid">
             <div class="stat-card stat-blue">
@@ -151,13 +155,6 @@ async function loadDashboard(content) {
                     <span class="stat-label">项目总数</span>
                 </div>
             </div>
-            <div class="stat-card stat-green">
-                <i class="fas fa-play-circle"></i>
-                <div class="stat-info">
-                    <span class="stat-num">${s.active_projects || 0}</span>
-                    <span class="stat-label">进行中</span>
-                </div>
-            </div>
             <div class="stat-card stat-orange">
                 <i class="fas fa-tasks"></i>
                 <div class="stat-info">
@@ -165,16 +162,58 @@ async function loadDashboard(content) {
                     <span class="stat-label">待办事项</span>
                 </div>
             </div>
-            <div class="stat-card stat-red">
-                <i class="fas fa-exclamation-triangle"></i>
+            <div class="stat-card ${s.overdue_tasks > 0 ? 'stat-red' : 'stat-green'}">
+                <i class="fas fa-exclamation-circle"></i>
                 <div class="stat-info">
-                    <span class="stat-num">${s.high_priority || 0}</span>
-                    <span class="stat-label">高优先级</span>
+                    <span class="stat-num">${s.overdue_tasks || 0}</span>
+                    <span class="stat-label">逾期待办</span>
+                </div>
+            </div>
+            <div class="stat-card stat-red">
+                <i class="fas fa-search"></i>
+                <div class="stat-info">
+                    <span class="stat-num">${s.open_findings || 0}</span>
+                    <span class="stat-label">Open问题</span>
+                </div>
+            </div>
+            <div class="stat-card stat-yellow">
+                <i class="fas fa-clock"></i>
+                <div class="stat-info">
+                    <span class="stat-num">${s.due_soon || 0}</span>
+                    <span class="stat-label">本周到期</span>
+                </div>
+            </div>
+            <div class="stat-card stat-purple">
+                <i class="fas fa-hospital"></i>
+                <div class="stat-info">
+                    <span class="stat-num">${centers.length || 0}</span>
+                    <span class="stat-label">中心总数</span>
                 </div>
             </div>
         </div>
 
-        ${s.due_soon > 0 ? `<div class="alert-banner"><i class="fas fa-clock"></i> 有 <strong>${s.due_soon}</strong> 个任务将在7天内到期！</div>` : ''}
+        ${s.overdue_tasks > 0 ? `<div class="alert-banner" style="background:#ffebee;border-left:4px solid #f44336;"><i class="fas fa-exclamation-triangle" style="color:#f44336;"></i> 有 <strong>${s.overdue_tasks}</strong> 个待办已逾期！</div>` : ''}
+        ${s.due_soon > 0 ? `<div class="alert-banner" style="background:#fff8e1;border-left:4px solid #ff9800;"><i class="fas fa-clock" style="color:#ff9800;"></i> 有 <strong>${s.due_soon}</strong> 个任务将在7天内到期！</div>` : ''}
+
+        <!-- 各中心进度快照 -->
+        ${centerProgress.length > 0 ? `
+        <div class="card">
+            <div class="card-header"><i class="fas fa-chart-line"></i> 各中心进度</div>
+            <div style="padding:10px;">
+                ${centerProgress.map(c => `
+                    <div style="display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openCenterDetail('${c.id}')">
+                        <div style="width:80px;font-size:0.9em;color:#666;">${escHtml(c.code)}</div>
+                        <div style="flex:1;margin:0 10px;">
+                            <div style="font-size:0.9em;margin-bottom:4px;">${escHtml(c.name)}</div>
+                            <div style="width:100%;height:6px;background:#e0e0e0;border-radius:3px;overflow:hidden;">
+                                <div style="width:${c.pct}%;height:100%;background:${c.pct === 100 ? '#27ae60' : c.pct >= 50 ? '#f39c12' : '#3498db'};border-radius:3px;transition:width .3s;"></div>
+                            </div>
+                        </div>
+                        <div style="width:50px;text-align:right;font-size:0.85em;color:#888;">${c.done}/${c.total}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>` : ''}
 
         <div class="card">
             <div class="card-header"><i class="fas fa-folder"></i> 项目列表</div>
@@ -327,7 +366,7 @@ function renderCenters(centers, projectId) {
         <div style="padding:12px;border-bottom:1px solid #eee;background:#fafafa;">
             <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCenterDetail('${c.id}')">
                 <div style="flex:1;">
-                    <strong>${escHtml(c.code)}</strong> - ${escHtml(c.name)}
+                    <strong style="color:#3498db;cursor:pointer;" onclick="openCenterDetail('${c.id}')">${escHtml(c.code)}</strong> - <span style="color:#3498db;cursor:pointer;" onclick="openCenterDetail('${c.id}')">${escHtml(c.name)}</span>
                     ${c.pi ? `<span style="color:#666;font-size:0.85em;margin-left:8px;"><i class="fas fa-user-md"></i> ${escHtml(c.pi)}</span>` : ''}
                     ${c.department ? `<span style="color:#888;font-size:0.85em;"> | ${escHtml(c.department)}</span>` : ''}
                 </div>
@@ -1963,5 +2002,181 @@ async function exportExcel(type) {
         window.URL.revokeObjectURL(url);
     } catch (err) {
         alert('❌ 导出失败: ' + err.message);
+    }
+}
+
+
+// ========== 中心详情弹窗 ==========
+
+async function openCenterDetail(centerId) {
+    try {
+        const res = await fetch(`/api/center/${centerId}`);
+        const data = await res.json();
+        if (!data.success) { alert('加载失败'); return; }
+        
+        const center = data.center;
+        const tasks = data.tasks || [];
+        const findings = data.findings || [];
+        
+        const today = new Date().toISOString().split('T')[0];
+        
+        openModal(`
+            <h3><i class="fas fa-hospital" style="color:#3498db;"></i> ${escHtml(center.code)} ${escHtml(center.name)}</h3>
+            
+            <!-- 基本信息 -->
+            <div class="detail-grid" style="margin:15px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                ${center.pi_name ? `<div class="detail-item"><label>PI</label><span>${escHtml(center.pi_name)}</span></div>` : ''}
+                ${center.pi_phone ? `<div class="detail-item"><label>PI电话</label><span>${escHtml(center.pi_phone)}</span></div>` : ''}
+                ${center.contact_crc ? `<div class="detail-item"><label>CRC</label><span>${escHtml(center.contact_crc)}</span></div>` : ''}
+                ${center.contact_crc_phone ? `<div class="detail-item"><label>CRC电话</label><span>${escHtml(center.contact_crc_phone)}</span></div>` : ''}
+                ${center.department ? `<div class="detail-item"><label>科室</label><span>${escHtml(center.department)}</span></div>` : ''}
+            </div>
+            ${center.contact_ethics ? `<div style="margin:8px 0;padding:8px;background:#f8f9fa;border-radius:6px;font-size:0.9em;"><strong>伦理联系：</strong>${escHtml(center.contact_ethics).replace(/\n/g,'<br>')}</div>` : ''}
+            
+            <!-- 待办列表 -->
+            <div style="margin-top:15px;">
+                <div class="card-header" style="margin-bottom:10px;">
+                    <i class="fas fa-tasks"></i> 待办事项 (${tasks.length})
+                    <button class="btn btn-primary btn-sm" onclick="closeModal();openNewTaskForCenter('${center.id}')" style="margin-left:auto;">+ 新建</button>
+                </div>
+                ${tasks.length === 0 ? '<p style="color:#999;font-size:0.9em;">暂无待办</p>' : 
+                    tasks.map(t => `<div style="padding:8px;border-bottom:1px solid #f0f0f0;${t.done ? 'opacity:0.6;text-decoration:line-through;' : ''}">
+                        <span style="color:${t.priority === 'high' ? '#e74c3c' : t.priority === 'medium' ? '#f39c12' : '#27ae60'}">●</span>
+                        ${escHtml(t.title)}
+                        ${t.due_date && t.due_date < today && !t.done ? '<span style="color:#e74c3c;font-size:0.8em;margin-left:8px;">⚠️逾期</span>' : ''}
+                    </div>`).join('')}
+            </div>
+            
+            <!-- 监查问题列表 -->
+            <div style="margin-top:15px;">
+                <div class="card-header" style="margin-bottom:10px;">
+                    <i class="fas fa-search"></i> 监查问题 (${findings.length})
+                    <button class="btn btn-primary btn-sm" onclick="closeModal();openNewFindingForCenter('${center.id}')" style="margin-left:auto;">+ 新建</button>
+                </div>
+                ${findings.length === 0 ? '<p style="color:#999;font-size:0.9em;">暂无问题</p>' : 
+                    findings.map(f => `<div style="padding:8px;border-bottom:1px solid #f0f0f0;">
+                        <span style="background:${f.severity === 'Critical' ? '#e74c3c' : f.severity === 'Major' ? '#f39c12' : '#27ae60'};color:#fff;padding:2px 6px;border-radius:3px;font-size:0.75em;">${f.severity}</span>
+                        <span style="margin-left:6px;">${escHtml(f.finding_number)}</span>
+                        <span style="color:#666;font-size:0.9em;margin-left:8px;">${escHtml(f.description).slice(0,50)}</span>
+                    </div>`).join('')}
+            </div>
+            
+            <div style="text-align:right;margin-top:15px;">
+                <button class="btn btn-text" onclick="closeModal()">关闭</button>
+                <button class="btn btn-primary" onclick="closeModal();editCenterInfo('${center.id}')">编辑信息</button>
+            </div>
+        `);
+    } catch (err) {
+        alert('加载失败: ' + err.message);
+    }
+}
+
+async function openNewTaskForCenter(centerId) {
+    // 跳转至待办页面并预选中心
+    navigateTo('tasks');
+    setTimeout(() => {
+        const centerSelect = document.getElementById('filterCenter');
+        if (centerSelect) centerSelect.value = centerId;
+        openNewTaskForm();
+    }, 500);
+}
+
+async function openNewFindingForCenter(centerId) {
+    // 跳转至监查问题页面并预选中心
+    navigateTo('findings');
+    setTimeout(() => {
+        const centerSelect = document.getElementById('f_center');
+        if (centerSelect) centerSelect.value = centerId;
+        openNewFindingForm();
+    }, 500);
+}
+
+async function editCenterInfo(centerId) {
+    try {
+        const res = await fetch(`/api/center/${centerId}`);
+        const data = await res.json();
+        if (!data.success) { alert('加载失败'); return; }
+        const c = data.center;
+        
+        openModal(`
+            <h3><i class="fas fa-edit" style="color:#3498db;"></i> 编辑中心信息</h3>
+            <form id="centerInfoForm" onsubmit="submitCenterInfo(event, '${centerId}')">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PI姓名</label>
+                        <input type="text" id="ci_pi_name" value="${escAttr(c.pi_name || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                    <div class="form-group">
+                        <label>PI电话</label>
+                        <input type="text" id="ci_pi_phone" value="${escAttr(c.pi_phone || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>PI邮箱</label>
+                        <input type="text" id="ci_pi_email" value="${escAttr(c.pi_email || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                    <div class="form-group">
+                        <label>科室</label>
+                        <input type="text" id="ci_department" value="${escAttr(c.department || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>CRC姓名</label>
+                        <input type="text" id="ci_crc" value="${escAttr(c.contact_crc || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                    <div class="form-group">
+                        <label>CRC电话</label>
+                        <input type="text" id="ci_crc_phone" value="${escAttr(c.contact_crc_phone || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>伦理联系方式</label>
+                    <textarea id="ci_ethics" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${escAttr(c.contact_ethics || '')}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>医院地址</label>
+                    <textarea id="ci_address" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${escAttr(c.address || '')}</textarea>
+                </div>
+                <div style="text-align:right;margin-top:15px;">
+                    <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        `);
+    } catch (err) {
+        alert('加载失败: ' + err.message);
+    }
+}
+
+async function submitCenterInfo(e, centerId) {
+    e.preventDefault();
+    const data = {
+        pi_name: document.getElementById('ci_pi_name').value.trim(),
+        pi_phone: document.getElementById('ci_pi_phone').value.trim(),
+        pi_email: document.getElementById('ci_pi_email').value.trim(),
+        department: document.getElementById('ci_department').value.trim(),
+        contact_crc: document.getElementById('ci_crc').value.trim(),
+        contact_crc_phone: document.getElementById('ci_crc_phone').value.trim(),
+        contact_ethics: document.getElementById('ci_ethics').value.trim(),
+        address: document.getElementById('ci_address').value.trim()
+    };
+    
+    try {
+        const res = await fetch(`/api/center/${centerId}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.success) {
+            closeModal();
+            alert('✅ 保存成功');
+        } else {
+            alert('❌ 保存失败');
+        }
+    } catch (err) {
+        alert('❌ 保存失败: ' + err.message);
     }
 }
