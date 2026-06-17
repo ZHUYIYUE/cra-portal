@@ -157,6 +157,14 @@ def handle_centers():
     if request.method == 'GET':
         project_id = request.args.get('project_id')
         centers = db.get_centers(project_id)
+        # 为每个中心附加任务数和问题数
+        for c in centers:
+            cid = c['id']
+            tasks = db.get_tasks(center_id=cid)
+            findings = db.get_findings(center_id=cid)
+            c['task_count'] = len(tasks)
+            c['finding_count'] = len(findings)
+            c['open_finding_count'] = len([f for f in findings if f.get('status') == 'Open'])
         return jsonify({"success": True, "centers": centers})
     
     # POST - create_center
