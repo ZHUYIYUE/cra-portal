@@ -49,6 +49,7 @@ def init_db():
                 ability_type VARCHAR(50) DEFAULT 'execution',
                 due_date VARCHAR(20) DEFAULT '',
                 done BOOLEAN DEFAULT FALSE,
+                task_status VARCHAR(20) DEFAULT 'pending',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -214,6 +215,16 @@ def init_db():
         except Exception as e:
             print(f'[DB] centers 表升级检查失败: {e}')
         
+        # tasks 表升级：添加 task_status 字段
+        try:
+            cur.execute("""SELECT column_name FROM information_schema.columns
+                        WHERE table_name='tasks' AND column_name='task_status'""")
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE tasks ADD COLUMN task_status VARCHAR(20) DEFAULT 'pending'")
+                print('[DB] tasks 表已添加 task_status 字段')
+        except Exception as e:
+            print(f'[DB] tasks 表升级检查失败: {e}')
+
         conn.commit()
         print('[DB] 数据库表初始化完成')
         return True
