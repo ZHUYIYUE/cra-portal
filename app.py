@@ -151,8 +151,14 @@ def get_center_detail(center_id):
         result = db.update_center(center_id, data)
         return jsonify({"success": True, "center": result})
 
-@app.route('/api/centers', methods=['POST'])
-def create_center():
+@app.route('/api/centers', methods=['GET', 'POST'])
+def handle_centers():
+    if request.method == 'GET':
+        project_id = request.args.get('project_id')
+        centers = db.get_centers(project_id)
+        return jsonify({"success": True, "centers": centers})
+    
+    # POST - create_center
     data = request.json or {}
     center = {
         "id": str(uuid.uuid4())[:8],
