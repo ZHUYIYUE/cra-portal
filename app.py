@@ -454,7 +454,7 @@ def get_findings_stats():
         by_severity[sev] = by_severity.get(sev, 0) + 1
         cat = f.get('category', '其他')
         by_category[cat] = by_category.get(cat, 0) + 1
-        if f.get('status') not in ('Closed', 'Resolved') and f.get('due_date'):
+        if f.get('status') not in ('Closed', 'Resolved', 'Waiting CRC') and f.get('due_date'):
             try:
                 due = date.fromisoformat(f['due_date'])
                 if due < today:
@@ -479,6 +479,7 @@ def get_stats():
     total_tasks = len(tasks)
     done_tasks = len([t for t in tasks if t.get('done')])
     pending_tasks = total_tasks - done_tasks
+    waiting_crc_tasks = len([t for t in tasks if t.get('task_status') == 'waiting_crc' and not t.get('done')])
     high_priority = len([t for t in tasks if not t.get('done') and t.get('priority') == 'high'])
     
     # 逾期待办（due_date < today 且未完成）
@@ -486,7 +487,7 @@ def get_stats():
     overdue_tasks = 0
     due_soon = 0
     for t in tasks:
-        if not t.get('done') and t.get('due_date'):
+        if not t.get('done') and t.get('task_status') != 'waiting_crc' and t.get('due_date'):
             try:
                 due = date.fromisoformat(t['due_date'])
                 if due < today:
@@ -523,6 +524,7 @@ def get_stats():
             "total_tasks": total_tasks,
             "done_tasks": done_tasks,
             "pending_tasks": pending_tasks,
+            "waiting_crc_tasks": waiting_crc_tasks,
             "high_priority": high_priority,
             "overdue_tasks": overdue_tasks,
             "due_soon": due_soon,
