@@ -464,6 +464,9 @@ def get_findings_stats():
 def get_stats():
     projects = db.get_projects()
     tasks = db.get_tasks()
+    centers = db.get_centers()
+    findings = db.get_findings_all()
+    
     total_projects = len(projects)
     active_projects = len([p for p in projects if p.get('stage') == '进行中'])
     total_tasks = len(tasks)
@@ -471,15 +474,39 @@ def get_stats():
     pending_tasks = total_tasks - done_tasks
     high_priority = len([t for t in tasks if not t.get('done') and t.get('priority') == 'high'])
     
+    # 逾期待办（due_date < today 且未完成）
     today = date.today()
+    overdue_tasks = 0
     due_soon = 0
     for t in tasks:
         if not t.get('done') and t.get('due_date'):
             try:
                 due = date.fromisoformat(t['due_date'])
-                if (due - today).days <= 7 and (due - today).days >= 0:
+                if due < today:
+                    overdue_tasks += 1
+                elif (due - today).days <= 7 and (due - today).days >= 0:
                     due_soon += 1
             except: pass
+    
+    # Open监查问题
+    open_findings = len([f for f in findings if f.get('status') == 'Open'])
+    total_findings = len(findings)
+    
+    # 各中心进度（里程碑完成率）
+    center_progress = []
+    for c in centers:
+        ms = c.get('milestones', []) or []
+        done = sum(1 for m in ms if m.get('done'))
+        total = len(ms)
+        pct = round(done / total * 100) if total > 0 else 0
+        center_progress.append({
+            'id': c['id'],
+            'code': c.get('code', ''),
+            'name': c.get('name', ''),
+            'done': done,
+            'total': total,
+            'pct': pct
+        })
     
     return jsonify({
         "success": True,
@@ -490,7 +517,11 @@ def get_stats():
             "done_tasks": done_tasks,
             "pending_tasks": pending_tasks,
             "high_priority": high_priority,
-            "due_soon": due_soon
+            "overdue_tasks": overdue_tasks,
+            "due_soon": due_soon,
+            "open_findings": open_findings,
+            "total_findings": total_findings,
+            "center_progress": center_progress
         }
     })
 
