@@ -127,6 +127,7 @@ async function loadPage(page) {
         case 'recommend': await loadRecommend(content); break;
         case 'startup': await loadStartup(content); break;
         case 'findings': await loadFindings(content); break;
+        case 'center-detail': await loadCenterDetail(content); break;
     }
 }
 
@@ -1535,6 +1536,646 @@ async function saveStartupLog(startupTaskId, startupTaskName) {
         alert('保存失败');
     }
 }
+
+// ========== 中心详情页 ==========
+
+const CENTER_TABS = ['概览', '研究人员', '伦理递交', '方案偏离', '关联数据'];
+
+async function loadCenterDetail(content) {
+    const centerId = state.currentCenterId;
+    if (!centerId) {
+        content.innerHTML = '<p style="color:#999;">未选择中心</p>';
+        return;
+    }
+    const [centerRes, staffRes, ethicsRes, pdsRes, tasksRes, findingsRes] = await Promise.all([
+        fetch(`/api/center/${centerId}`),
+        fetch(`/api/staff?center_id=${centerId}`),
+        fetch(`/api/ethics?center_id=${centerId}`),
+        fetch(`/api/pds?center_id=${centerId}`),
+        fetch(`/api/tasks?center_id=${centerId}`),
+        fetch(`/api/findings`)
+    ]);
+    const centerData = await centerRes.json();
+    const staff = (await staffRes.json()).staff || [];
+    const ethics = (await ethicsRes.json()).ethics || [];
+    const pds = (await pdsRes.json()).pds || [];
+    const centerTasks = (await tasksRes.json()).tasks || [];
+    const allFindings = (await findingsRes.json()).findings || [];
+    const centerFindings = allFindings.filter(f => f.center_id === centerId);
+
+    const center = centerData.center || {};
+    const today = new Date().toISOString().split('T')[0];
+    if (!state.centerDetailTab) state.centerDetailTab = '概览';
+
+    content.innerHTML = `
+        <div class="center-detail-page">
+            <div class="page-header" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                <button class="btn btn-text" onclick="navigateTo('dashboard')" style="padding:4px 8px;"><i class="fas fa-arrow-left"></i> 返回</button>
+                <h2 style="margin:0;font-size:1.2em;"><i class="fas fa-hospital" style="color:#3498db;"></i> ${escHtml(center.code || '')} ${escHtml(center.name || '')}</h2>
+            </div>
+            <div class="tab-bar" style="display:flex;border-bottom:2px solid #e0e0e0;margin-bottom:16px;overflow-x:auto;">
+                ${CENTER_TABS.map(tab => `
+                    <button class="tab-btn ${state.centerDetailTab === tab ? 'active' : ''}" 
+                            onclick="switchCenterTab('${tab}', this)"
+                            style="padding:10px 18px;border:none;background:none;cursor:pointer;font-size:14px;border-bottom:3px solid transparent;white-space:nowrap;">
+                        ${tab}
+                    </button>
+                `).join('')}
+            </div>
+            <div id="center-tab-content"></div>
+        </div>
+    `;
+
+    renderCenterTabContent('概览', { center, staff, ethics, pds, centerTasks, centerFindings, today });
+}
+
+function switchCenterTab(tab, btn) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.centerDetailTab = tab;
+    const centerId = state.currentCenterId;
+    Promise.all([
+        fetch(`/api/center/${centerId}`),
+        fetch(`/api/staff?center_id=${centerId}`),
+        fetch(`/api/ethics?center_id=${centerId}`),
+        fetch(`/api/pds?center_id=${centerId}`),
+        fetch(`/api/tasks?center_id=${centerId}`),
+        fetch(`/api/findings`)
+    ]).then(async ([cr, sr, er, pr, tr, fr]) => {
+        const centerData = await cr.json();
+        const staff = (await sr.json()).staff || [];
+        const ethics = (await er.json()).ethics || [];
+        const pds = (await pr.json()).pds || [];
+        const centerTasks = (await tr.json()).tasks || [];
+        const allFindings = (await fr.json()).findings || [];
+        const centerFindings = allFindings.filter(f => f.center_id === centerId);
+        renderCenterTabContent(tab, {
+            center: centerData.center || {},
+            staff, ethics, pds, centerTasks, centerFindings,
+            today: new Date().toISOString().split('T')[0]
+        });
+    });
+}
+
+function renderCenterTabContent(tab, data) {
+    const { center, staff, ethics, pds, centerTasks, centerFindings, today } = data;
+    const el = document.getElementById('center-tab-content');
+    if (tab === '概览') renderCenterTabOverview(el, center);
+    else if (tab === '研究人员') renderCenterTabStaff(el, staff, center.id);
+    else if (tab === '伦理递交') renderCenterTabEthics(el, ethics, center.id);
+    else if (tab === '方案偏离') renderCenterTabPDs(el, pds, center.id);
+    else if (tab === '关联数据') renderCenterTabLinks(el, centerTasks, centerFindings, center.id, today);
+}
+
+// ---- Tab 1: 概览 ----
+function renderCenterTabOverview(el, c) {
+    el.innerHTML = `
+        <div class="card">
+            <div class="card-header"><i class="fas fa-info-circle"></i> 基本信息 <button class="btn btn-sm btn-primary" onclick="editCenterInfo('${c.id}')" style="margin-left:auto;">编辑</button></div>
+            <div class="detail-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                ${c.pi_name ? `<div class="detail-item"><label>PI</label><span>${escHtml(c.pi_name)}</span></div>` : ''}
+                ${c.pi_phone ? `<div class="detail-item"><label>PI电话</label><span>${escHtml(c.pi_phone)}</span></div>` : ''}
+                ${c.pi_email ? `<div class="detail-item"><label>PI邮箱</label><span>${escHtml(c.pi_email)}</span></div>` : ''}
+                ${c.department ? `<div class="detail-item"><label>科室</label><span>${escHtml(c.department)}</span></div>` : ''}
+                ${c.contact_crc ? `<div class="detail-item"><label>CRC</label><span>${escHtml(c.contact_crc)}</span></div>` : ''}
+                ${c.contact_crc_phone ? `<div class="detail-item"><label>CRC电话</label><span>${escHtml(c.contact_crc_phone)}</span></div>` : ''}
+            </div>
+            ${c.contact_ethics ? `<div style="margin-top:10px;padding:10px;background:#f8f9fa;border-radius:6px;font-size:0.9em;"><strong>伦理联系：</strong>${escHtml(c.contact_ethics).replace(/\\n/g,'<br>')}</div>` : ''}
+            ${c.address ? `<div style="margin-top:8px;font-size:0.9em;color:#666;"><i class="fas fa-map-marker-alt"></i> ${escHtml(c.address)}</div>` : ''}
+        </div>
+    `;
+}
+
+// ---- Tab 2: 研究人员 ----
+const STAFF_ROLES = ['PI', 'Sub-I', '研究护士', '药品管理员', 'CRC', '质控'];
+
+function renderCenterTabStaff(el, staffList, centerId) {
+    el.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-users"></i> 研究人员 (${staffList.length})
+                <button class="btn btn-sm btn-primary" onclick="openNewStaffForm('${centerId}')" style="margin-left:auto;">+ 新增人员</button>
+            </div>
+            ${staffList.length === 0 ? '<p style="color:#999;padding:10px;">暂无人员记录</p>' :
+            `<table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+                <thead><tr style="background:#f5f5f5;text-align:left;">
+                    <th style="padding:8px;">姓名</th><th>角色</th><th>电话</th><th>邮箱</th>
+                    <th>授权日期</th><th>GCP</th><th>证书/简历</th><th></th>
+                </tr></thead>
+                <tbody>
+                    ${staffList.map(s => `
+                        <tr style="border-bottom:1px solid #f0f0f0;">
+                            <td style="padding:8px;"><strong>${escHtml(s.name)}</strong>${s.initials ? `<br><small style="color:#888;">(${escHtml(s.initials)})</small>` : ''}</td>
+                            <td><span class="role-badge">${escHtml(s.role)}</span></td>
+                            <td>${escHtml(s.phone || '-')}</td>
+                            <td>${escHtml(s.email || '-')}</td>
+                            <td>${s.auth_date || '-'}</td>
+                            <td>${s.gcp_collected ? `<span style="color:#27ae60;">✓ ${s.gcp_date || ''}</span>` : '<span style="color:#e74c3c;">✗</span>'}</td>
+                            <td>
+                                ${s.cv_collected ? `<span style="color:#27ae60;">简历</span>` : ''}
+                                ${s.license_collected ? `<br><span style="color:#27ae60;">执照 ${s.license_date || ''}</span>` : ''}
+                                ${!s.cv_collected && !s.license_collected ? '<span style="color:#e74c3c;">未收集</span>' : ''}
+                            </td>
+                            <td style="text-align:right;">
+                                <button class="btn btn-text btn-sm" onclick="editStaffMember('${s.id}')"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-text btn-sm" onclick="deleteStaffMember('${s.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                            </td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`}
+        </div>
+    `;
+}
+
+// ---- Tab 3: 伦理递交 ----
+const ETHICS_TYPES = ['初始伦理', '修正案', '方案偏离', '备案类文件', 'SAE报告', '年度报告', '结题报告'];
+const REVIEW_METHODS = ['会议审查', '快审', '备案'];
+
+function renderCenterTabEthics(el, ethicsList, centerId) {
+    el.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-file-alt"></i> 伦理递交 (${ethicsList.length})
+                <button class="btn btn-sm btn-primary" onclick="openNewEthicsForm('${centerId}')" style="margin-left:auto;">+ 新增递交</button>
+            </div>
+            ${ethicsList.length === 0 ? '<p style="color:#999;padding:10px;">暂无递交记录</p>' :
+            `<table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+                <thead><tr style="background:#f5f5f5;text-align:left;">
+                    <th style="padding:8px;">类型</th><th>文件名称</th><th>版本</th><th>版本日期</th>
+                    <th>PI签收</th><th>伦理递交</th><th>审查方式</th><th>审查日期</th><th>批件日期</th><th></th>
+                </tr></thead>
+                <tbody>
+                    ${ethicsList.map(e => `
+                        <tr style="border-bottom:1px solid #f0f0f0;">
+                            <td style="padding:8px;"><strong>${escHtml(e.doc_type || '-')}</strong></td>
+                            <td>${escHtml(e.doc_name || '-')}</td>
+                            <td>${escHtml(e.version || '-')}</td>
+                            <td>${e.version_date || '-'}</td>
+                            <td>${e.pi_sign_date || '-'}</td>
+                            <td>${e.submission_date || '-'}</td>
+                            <td>${escHtml(e.review_method || '-')}</td>
+                            <td>${e.review_date || '-'}</td>
+                            <td style="color:${e.approval_date ? '#27ae60' : '#e74c3c'};">${e.approval_date || '待批'}</td>
+                            <td style="text-align:right;">
+                                <button class="btn btn-text btn-sm" onclick="editEthicsSubmission('${e.id}')"><i class="fas fa-edit"></i></button>
+                                <button class="btn btn-text btn-sm" onclick="deleteEthicsSubmission('${e.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                            </td>
+                        </tr>`).join('')}
+                </tbody>
+            </table>`}
+        </div>
+    `;
+}
+
+// ---- Tab 4: 方案偏离 ----
+const PD_SEVERITIES = ['Minor', 'Major'];
+const PD_STATUSES = ['Open', 'Closed'];
+
+function renderCenterTabPDs(el, pdsList, centerId) {
+    el.innerHTML = `
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-exclamation-triangle"></i> 方案偏离 (${pdsList.length})
+                <button class="btn btn-sm btn-primary" onclick="openNewPDForm('${centerId}')" style="margin-left:auto;">+ 新增偏离</button>
+            </div>
+            ${pdsList.length === 0 ? '<p style="color:#999;padding:10px;">暂无方案偏离记录</p>' :
+            pdsList.map(pd => `
+                <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:12px;overflow:hidden;">
+                    <div style="background:${pd.severity === 'Major' ? '#fff3e0' : '#e8f5e9'};padding:12px 16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <span style="background:${pd.severity === 'Major' ? '#ff9800' : '#4CAF50'};color:#fff;padding:2px 8px;border-radius:4px;font-size:0.8em;">${pd.severity}</span>
+                        <strong>${escHtml(pd.pd_number)}</strong>
+                        <span style="margin-left:auto;color:#888;font-size:0.85em;">
+                            ${pd.occurred_date ? '发生: ' + pd.occurred_date : ''}
+                        </span>
+                        <span style="padding:2px 8px;border-radius:4px;font-size:0.8em;background:${pd.status === 'Open' ? '#e74c3c' : '#27ae60'};color:#fff;">${pd.status}</span>
+                    </div>
+                    <div style="padding:12px 16px;font-size:0.9em;">
+                        <div style="margin-bottom:6px;"><strong>偏离描述：</strong>${escHtml(pd.description || '-')}</div>
+                        <div style="margin-bottom:6px;"><strong>违反条款：</strong>${escHtml(pd.violated_clause || '-')}</div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.85em;color:#555;">
+                            <div><i class="fas fa-search"></i> 发现日期：${pd.discovered_date || '-'}</div>
+                            <div><i class="fas fa-building"></i> 上报申办方：${pd.reported_sponsor_date || '-'}</div>
+                            <div><i class="fas fa-hospital-o"></i> 上报伦理：${pd.reported_ethics_date || '-'}</div>
+                            <div><i class="fas fa-user"></i> 涉及人员：${escHtml(pd.subject_ids || '-')}</div>
+                        </div>
+                        ${pd.corrective_action ? `<div style="margin-top:8px;padding:8px;background:#f8f9fa;border-radius:6px;"><strong>整改措施：</strong>${escHtml(pd.corrective_action)}</div>` : ''}
+                    </div>
+                    <div style="padding:8px 16px;border-top:1px solid #f0f0f0;text-align:right;">
+                        <button class="btn btn-text btn-sm" onclick="editProtocolDeviation('${pd.id}')"><i class="fas fa-edit"></i> 编辑</button>
+                        <button class="btn btn-text btn-sm" onclick="deleteProtocolDeviation('${pd.id}')"><i class="fas fa-trash" style="color:#e74c3c;"></i> 删除</button>
+                    </div>
+                </div>`).join('')}
+        </div>
+    `;
+}
+
+// ---- Tab 5: 关联数据 ----
+function renderCenterTabLinks(el, tasks, findings, centerId, today) {
+    el.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-tasks"></i> 待办事项 (${tasks.length})
+                    <button class="btn btn-sm btn-primary" onclick="navigateTo('tasks')" style="margin-left:auto;">查看全部</button>
+                </div>
+                ${tasks.length === 0 ? '<p style="color:#999;padding:10px;">暂无待办</p>' :
+                tasks.slice(0, 10).map(t => `
+                    <div style="padding:8px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;">
+                        <span style="color:${t.priority === 'high' ? '#e74c3c' : t.priority === 'medium' ? '#f39c12' : '#27ae60'};">●</span>
+                        <span style="flex:1;font-size:0.9em;${t.done ? 'text-decoration:line-through;opacity:0.6;' : ''}">${escHtml(t.title)}</span>
+                        ${t.due_date && t.due_date < today && !t.done ? '<span style="color:#e74c3c;font-size:0.8em;">⚠️逾期</span>' : ''}
+                    </div>`).join('')}
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-search"></i> 监查问题 (${findings.length})
+                    <button class="btn btn-sm btn-primary" onclick="navigateTo('findings')" style="margin-left:auto;">查看全部</button>
+                </div>
+                ${findings.length === 0 ? '<p style="color:#999;padding:10px;">暂无问题</p>' :
+                findings.slice(0, 10).map(f => `
+                    <div style="padding:8px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px;">
+                        <span style="background:${f.severity === 'Critical' ? '#e74c3c' : f.severity === 'Major' ? '#f39c12' : '#27ae60'};color:#fff;padding:2px 6px;border-radius:3px;font-size:0.75em;">${f.severity}</span>
+                        <span style="font-size:0.85em;flex:1;">${escHtml(f.finding_number)} - ${escHtml((f.description || '').slice(0, 30))}</span>
+                    </div>`).join('')}
+            </div>
+        </div>
+    `;
+}
+
+// ========== 表单函数 ==========
+
+function toggleDate(inputId, checked) {
+    const input = document.getElementById(inputId);
+    if (input) { input.disabled = !checked; if (!checked) input.value = ''; }
+}
+
+// ---- 人员表单 ----
+async function openNewStaffForm(centerId) {
+    const roles = STAFF_ROLES.map(r => `<option value="${r}">${r}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-user-plus" style="color:#3498db;"></i> 新增研究人员</h3>
+        <form id="staffForm" onsubmit="submitStaffForm(event)" style="display:grid;gap:10px;max-width:600px;">
+            <input type="hidden" id="s_center_id" value="${centerId}">
+            <div class="form-row">
+                <div class="form-group"><label>姓名 *</label><input type="text" id="s_name" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>缩写</label><input type="text" id="s_initials" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>角色 *</label>
+                    <select id="s_role" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${roles}
+                    </select>
+                </div>
+                <div class="form-group"><label>授权日期</label><input type="date" id="s_auth_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>电话</label><input type="text" id="s_phone" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>邮箱</label><input type="email" id="s_email" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div style="font-weight:bold;margin-top:8px;">证书收集</div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_cv" onchange="toggleDate('s_cv_date', this.checked)"> 简历</label>
+                <input type="date" id="s_cv_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" disabled>
+            </div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_gcp" onchange="toggleDate('s_gcp_date', this.checked)"> GCP证书</label>
+                <input type="date" id="s_gcp_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" disabled>
+            </div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_license" onchange="toggleDate('s_license_date', this.checked)"> 执业资格证书</label>
+                <input type="date" id="s_license_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;" disabled>
+            </div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitStaffForm(e, editId) {
+    e.preventDefault();
+    const payload = {
+        center_id: document.getElementById('s_center_id').value,
+        name: document.getElementById('s_name').value.trim(),
+        initials: document.getElementById('s_initials').value.trim(),
+        role: document.getElementById('s_role').value,
+        phone: document.getElementById('s_phone').value.trim(),
+        email: document.getElementById('s_email').value.trim(),
+        auth_date: document.getElementById('s_auth_date').value,
+        cv_collected: document.getElementById('s_cv').checked,
+        cv_date: document.getElementById('s_cv_date').value,
+        gcp_collected: document.getElementById('s_gcp').checked,
+        gcp_date: document.getElementById('s_gcp_date').value,
+        license_collected: document.getElementById('s_license').checked,
+        license_date: document.getElementById('s_license_date').value,
+    };
+    const method = editId ? 'PUT' : 'POST';
+    const url = editId ? `/api/staff/${editId}` : '/api/staff';
+    const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.success) { closeModal(); switchCenterTab('研究人员', document.querySelector('.tab-btn.active')); }
+    else alert('保存失败');
+}
+
+async function editStaffMember(staffId) {
+    const res = await fetch(`/api/staff/${staffId}`);
+    const data = await res.json();
+    if (!data.success) { alert('加载失败'); return; }
+    const s = data.staff;
+    const roles = STAFF_ROLES.map(r => `<option value="${r}" ${s.role === r ? 'selected' : ''}>${r}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-user-edit" style="color:#3498db;"></i> 编辑研究人员</h3>
+        <form id="staffForm" onsubmit="submitStaffForm(event, '${staffId}')" style="display:grid;gap:10px;max-width:600px;">
+            <input type="hidden" id="s_center_id" value="${s.center_id}">
+            <div class="form-row">
+                <div class="form-group"><label>姓名 *</label><input type="text" id="s_name" required value="${escAttr(s.name || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>缩写</label><input type="text" id="s_initials" value="${escAttr(s.initials || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>角色 *</label>
+                    <select id="s_role" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${roles}
+                    </select>
+                </div>
+                <div class="form-group"><label>授权日期</label><input type="date" id="s_auth_date" value="${s.auth_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>电话</label><input type="text" id="s_phone" value="${escAttr(s.phone || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>邮箱</label><input type="email" id="s_email" value="${escAttr(s.email || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div style="font-weight:bold;margin-top:8px;">证书收集</div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_cv" ${s.cv_collected ? 'checked' : ''} onchange="toggleDate('s_cv_date', this.checked)"> 简历</label>
+                <input type="date" id="s_cv_date" value="${s.cv_date || ''}" ${s.cv_collected ? '' : 'disabled'} style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+            </div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_gcp" ${s.gcp_collected ? 'checked' : ''} onchange="toggleDate('s_gcp_date', this.checked)"> GCP证书</label>
+                <input type="date" id="s_gcp_date" value="${s.gcp_date || ''}" ${s.gcp_collected ? '' : 'disabled'} style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+            </div>
+            <div class="form-row">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="s_license" ${s.license_collected ? 'checked' : ''} onchange="toggleDate('s_license_date', this.checked)"> 执业资格证书</label>
+                <input type="date" id="s_license_date" value="${s.license_date || ''}" ${s.license_collected ? '' : 'disabled'} style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+            </div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function deleteStaffMember(staffId) {
+    if (!confirm('确定删除该人员？')) return;
+    await fetch(`/api/staff/${staffId}`, { method: 'DELETE' });
+    switchCenterTab('研究人员', document.querySelector('.tab-btn.active'));
+}
+
+// ---- 伦理递交表单 ----
+async function openNewEthicsForm(centerId) {
+    const types = ETHICS_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
+    const methods = REVIEW_METHODS.map(m => `<option value="${m}">${m}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-file-plus" style="color:#3498db;"></i> 新增伦理递交</h3>
+        <form id="ethicsForm" onsubmit="submitEthicsForm(event)" style="display:grid;gap:10px;max-width:700px;">
+            <input type="hidden" id="e_center_id" value="${centerId}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>文件类型 *</label>
+                    <select id="e_doc_type" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${types}
+                    </select>
+                </div>
+                <div class="form-group"><label>文件名称</label><input type="text" id="e_doc_name" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>版本号</label><input type="text" id="e_version" placeholder="如 V1.0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>版本日期</label><input type="date" id="e_version_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>PI签收日期</label><input type="date" id="e_pi_sign_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>伦理递交日期</label><input type="date" id="e_submission_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>审查方式</label>
+                    <select id="e_review_method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${methods}
+                    </select>
+                </div>
+                <div class="form-group"><label>审查日期</label><input type="date" id="e_review_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-group"><label>批件日期/备案日期</label><input type="date" id="e_approval_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitEthicsForm(e, editId) {
+    e.preventDefault();
+    const payload = {
+        center_id: document.getElementById('e_center_id').value,
+        doc_type: document.getElementById('e_doc_type').value,
+        doc_name: document.getElementById('e_doc_name').value.trim(),
+        version: document.getElementById('e_version').value.trim(),
+        version_date: document.getElementById('e_version_date').value,
+        pi_sign_date: document.getElementById('e_pi_sign_date').value,
+        submission_date: document.getElementById('e_submission_date').value,
+        review_method: document.getElementById('e_review_method').value,
+        review_date: document.getElementById('e_review_date').value,
+        approval_date: document.getElementById('e_approval_date').value,
+    };
+    const method = editId ? 'PUT' : 'POST';
+    const url = editId ? `/api/ethics/${editId}` : '/api/ethics';
+    const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.success) { closeModal(); switchCenterTab('伦理递交', document.querySelector('.tab-btn.active')); }
+    else alert('保存失败');
+}
+
+async function editEthicsSubmission(subId) {
+    const res = await fetch(`/api/ethics/${subId}`);
+    const data = await res.json();
+    if (!data.success) { alert('加载失败'); return; }
+    const e = data.ethics;
+    const types = ETHICS_TYPES.map(t => `<option value="${t}" ${e.doc_type === t ? 'selected' : ''}>${t}</option>`).join('');
+    const methods = REVIEW_METHODS.map(m => `<option value="${m}" ${e.review_method === m ? 'selected' : ''}>${m}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-file-edit" style="color:#3498db;"></i> 编辑伦理递交</h3>
+        <form id="ethicsForm" onsubmit="submitEthicsForm(event, '${subId}')" style="display:grid;gap:10px;max-width:700px;">
+            <input type="hidden" id="e_center_id" value="${e.center_id}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>文件类型 *</label>
+                    <select id="e_doc_type" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${types}
+                    </select>
+                </div>
+                <div class="form-group"><label>文件名称</label><input type="text" id="e_doc_name" value="${escAttr(e.doc_name || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>版本号</label><input type="text" id="e_version" value="${escAttr(e.version || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>版本日期</label><input type="date" id="e_version_date" value="${e.version_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>PI签收日期</label><input type="date" id="e_pi_sign_date" value="${e.pi_sign_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>伦理递交日期</label><input type="date" id="e_submission_date" value="${e.submission_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>审查方式</label>
+                    <select id="e_review_method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${methods}
+                    </select>
+                </div>
+                <div class="form-group"><label>审查日期</label><input type="date" id="e_review_date" value="${e.review_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-group"><label>批件日期/备案日期</label><input type="date" id="e_approval_date" value="${e.approval_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function deleteEthicsSubmission(subId) {
+    if (!confirm('确定删除该递交记录？')) return;
+    await fetch(`/api/ethics/${subId}`, { method: 'DELETE' });
+    switchCenterTab('伦理递交', document.querySelector('.tab-btn.active'));
+}
+
+// ---- 方案偏离表单 ----
+async function openNewPDForm(centerId) {
+    const severities = PD_SEVERITIES.map(s => `<option value="${s}">${s}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-exclamation-circle" style="color:#e74c3c;"></i> 新增方案偏离</h3>
+        <form id="pdForm" onsubmit="submitPDFormNew(event)" style="display:grid;gap:10px;max-width:700px;">
+            <input type="hidden" id="pd_center_id" value="${centerId}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>严重程度 *</label>
+                    <select id="pd_severity" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${severities}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group"><label>方案偏离描述 *</label><textarea id="pd_description" required rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;"></textarea></div>
+            <div class="form-group"><label>违反方案哪条规定</label><textarea id="pd_violated_clause" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;"></textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>发生日期</label><input type="date" id="pd_occurred_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>发现日期</label><input type="date" id="pd_discovered_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>上报申办方日期</label><input type="date" id="pd_reported_sponsor_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>上报中心伦理日期</label><input type="date" id="pd_reported_ethics_date" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-group"><label>涉及人员/受试者编号</label><input type="text" id="pd_subject_ids" placeholder="如: PT-001, PT-003" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            <div class="form-group"><label>整改/预防措施</label><textarea id="pd_corrective_action" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;"></textarea></div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitPDFormNew(e) {
+    e.preventDefault();
+    const payload = {
+        center_id: document.getElementById('pd_center_id').value,
+        severity: document.getElementById('pd_severity').value,
+        description: document.getElementById('pd_description').value.trim(),
+        violated_clause: document.getElementById('pd_violated_clause').value.trim(),
+        occurred_date: document.getElementById('pd_occurred_date').value,
+        discovered_date: document.getElementById('pd_discovered_date').value,
+        reported_sponsor_date: document.getElementById('pd_reported_sponsor_date').value,
+        reported_ethics_date: document.getElementById('pd_reported_ethics_date').value,
+        subject_ids: document.getElementById('pd_subject_ids').value.trim(),
+        corrective_action: document.getElementById('pd_corrective_action').value.trim(),
+    };
+    const res = await fetch('/api/pds', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.success) { closeModal(); switchCenterTab('方案偏离', document.querySelector('.tab-btn.active')); }
+    else alert('保存失败');
+}
+
+async function editProtocolDeviation(pdId) {
+    const res = await fetch(`/api/pds/${pdId}`);
+    const data = await res.json();
+    if (!data.success) { alert('加载失败'); return; }
+    const pd = data.pd;
+    const severities = PD_SEVERITIES.map(s => `<option value="${s}" ${pd.severity === s ? 'selected' : ''}>${s}</option>`).join('');
+    openModal(`
+        <h3><i class="fas fa-exclamation-circle" style="color:#e74c3c;"></i> 编辑方案偏离 ${escHtml(pd.pd_number)}</h3>
+        <form id="pdForm" onsubmit="submitPDFormEdit(event, '${pdId}')" style="display:grid;gap:10px;max-width:700px;">
+            <input type="hidden" id="pd_center_id" value="${pd.center_id}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>严重程度 *</label>
+                    <select id="pd_severity" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
+                        <option value="">请选择</option>${severities}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <div style="padding:8px 0;">
+                        ${PD_STATUSES.map(s => `<label style="margin-right:16px;cursor:pointer;"><input type="radio" name="pd_status" value="${s}" ${pd.status === s ? 'checked' : ''}> ${s}</label>`).join('')}
+                    </div>
+                </div>
+            </div>
+            <div class="form-group"><label>方案偏离描述 *</label><textarea id="pd_description" required rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${escAttr(pd.description || '')}</textarea></div>
+            <div class="form-group"><label>违反方案哪条规定</label><textarea id="pd_violated_clause" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${escAttr(pd.violated_clause || '')}</textarea></div>
+            <div class="form-row">
+                <div class="form-group"><label>发生日期</label><input type="date" id="pd_occurred_date" value="${pd.occurred_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>发现日期</label><input type="date" id="pd_discovered_date" value="${pd.discovered_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>上报申办方日期</label><input type="date" id="pd_reported_sponsor_date" value="${pd.reported_sponsor_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+                <div class="form-group"><label>上报中心伦理日期</label><input type="date" id="pd_reported_ethics_date" value="${pd.reported_ethics_date || ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            </div>
+            <div class="form-group"><label>涉及人员/受试者编号</label><input type="text" id="pd_subject_ids" value="${escAttr(pd.subject_ids || '')}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+            <div class="form-group"><label>整改/预防措施</label><textarea id="pd_corrective_action" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${escAttr(pd.corrective_action || '')}</textarea></div>
+            <div style="text-align:right;margin-top:12px;">
+                <button type="button" class="btn btn-text" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    `);
+}
+
+async function submitPDFormEdit(e, pdId) {
+    e.preventDefault();
+    const statusRadio = document.querySelector('input[name="pd_status"]:checked');
+    const payload = {
+        center_id: document.getElementById('pd_center_id').value,
+        severity: document.getElementById('pd_severity').value,
+        description: document.getElementById('pd_description').value.trim(),
+        violated_clause: document.getElementById('pd_violated_clause').value.trim(),
+        occurred_date: document.getElementById('pd_occurred_date').value,
+        discovered_date: document.getElementById('pd_discovered_date').value,
+        reported_sponsor_date: document.getElementById('pd_reported_sponsor_date').value,
+        reported_ethics_date: document.getElementById('pd_reported_ethics_date').value,
+        subject_ids: document.getElementById('pd_subject_ids').value.trim(),
+        corrective_action: document.getElementById('pd_corrective_action').value.trim(),
+        status: statusRadio ? statusRadio.value : 'Open',
+    };
+    const res = await fetch(`/api/pds/${pdId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.success) { closeModal(); switchCenterTab('方案偏离', document.querySelector('.tab-btn.active')); }
+    else alert('保存失败');
+}
+
+async function deleteProtocolDeviation(pdId) {
+    if (!confirm('确定删除该方案偏离记录？')) return;
+    await fetch(`/api/pds/${pdId}`, { method: 'DELETE' });
+    switchCenterTab('方案偏离', document.querySelector('.tab-btn.active'));
+}
 // ========== 监查问题页面 ==========
 
 async function loadFindings(content) {
@@ -2009,66 +2650,9 @@ async function exportExcel(type) {
 // ========== 中心详情弹窗 ==========
 
 async function openCenterDetail(centerId) {
-    try {
-        const res = await fetch(`/api/center/${centerId}`);
-        const data = await res.json();
-        if (!data.success) { alert('加载失败'); return; }
-        
-        const center = data.center;
-        const tasks = data.tasks || [];
-        const findings = data.findings || [];
-        
-        const today = new Date().toISOString().split('T')[0];
-        
-        openModal(`
-            <h3><i class="fas fa-hospital" style="color:#3498db;"></i> ${escHtml(center.code)} ${escHtml(center.name)}</h3>
-            
-            <!-- 基本信息 -->
-            <div class="detail-grid" style="margin:15px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                ${center.pi_name ? `<div class="detail-item"><label>PI</label><span>${escHtml(center.pi_name)}</span></div>` : ''}
-                ${center.pi_phone ? `<div class="detail-item"><label>PI电话</label><span>${escHtml(center.pi_phone)}</span></div>` : ''}
-                ${center.contact_crc ? `<div class="detail-item"><label>CRC</label><span>${escHtml(center.contact_crc)}</span></div>` : ''}
-                ${center.contact_crc_phone ? `<div class="detail-item"><label>CRC电话</label><span>${escHtml(center.contact_crc_phone)}</span></div>` : ''}
-                ${center.department ? `<div class="detail-item"><label>科室</label><span>${escHtml(center.department)}</span></div>` : ''}
-            </div>
-            ${center.contact_ethics ? `<div style="margin:8px 0;padding:8px;background:#f8f9fa;border-radius:6px;font-size:0.9em;"><strong>伦理联系：</strong>${escHtml(center.contact_ethics).replace(/\n/g,'<br>')}</div>` : ''}
-            
-            <!-- 待办列表 -->
-            <div style="margin-top:15px;">
-                <div class="card-header" style="margin-bottom:10px;">
-                    <i class="fas fa-tasks"></i> 待办事项 (${tasks.length})
-                    <button class="btn btn-primary btn-sm" onclick="closeModal();openNewTaskForCenter('${center.id}')" style="margin-left:auto;">+ 新建</button>
-                </div>
-                ${tasks.length === 0 ? '<p style="color:#999;font-size:0.9em;">暂无待办</p>' : 
-                    tasks.map(t => `<div style="padding:8px;border-bottom:1px solid #f0f0f0;${t.done ? 'opacity:0.6;text-decoration:line-through;' : ''}">
-                        <span style="color:${t.priority === 'high' ? '#e74c3c' : t.priority === 'medium' ? '#f39c12' : '#27ae60'}">●</span>
-                        ${escHtml(t.title)}
-                        ${t.due_date && t.due_date < today && !t.done ? '<span style="color:#e74c3c;font-size:0.8em;margin-left:8px;">⚠️逾期</span>' : ''}
-                    </div>`).join('')}
-            </div>
-            
-            <!-- 监查问题列表 -->
-            <div style="margin-top:15px;">
-                <div class="card-header" style="margin-bottom:10px;">
-                    <i class="fas fa-search"></i> 监查问题 (${findings.length})
-                    <button class="btn btn-primary btn-sm" onclick="closeModal();openNewFindingForCenter('${center.id}')" style="margin-left:auto;">+ 新建</button>
-                </div>
-                ${findings.length === 0 ? '<p style="color:#999;font-size:0.9em;">暂无问题</p>' : 
-                    findings.map(f => `<div style="padding:8px;border-bottom:1px solid #f0f0f0;">
-                        <span style="background:${f.severity === 'Critical' ? '#e74c3c' : f.severity === 'Major' ? '#f39c12' : '#27ae60'};color:#fff;padding:2px 6px;border-radius:3px;font-size:0.75em;">${f.severity}</span>
-                        <span style="margin-left:6px;">${escHtml(f.finding_number)}</span>
-                        <span style="color:#666;font-size:0.9em;margin-left:8px;">${escHtml(f.description).slice(0,50)}</span>
-                    </div>`).join('')}
-            </div>
-            
-            <div style="text-align:right;margin-top:15px;">
-                <button class="btn btn-text" onclick="closeModal()">关闭</button>
-                <button class="btn btn-primary" onclick="closeModal();editCenterInfo('${center.id}')">编辑信息</button>
-            </div>
-        `);
-    } catch (err) {
-        alert('加载失败: ' + err.message);
-    }
+    state.currentCenterId = centerId;
+    state.centerDetailTab = '概览';
+    loadPage('center-detail');
 }
 
 async function openNewTaskForCenter(centerId) {

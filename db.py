@@ -123,6 +123,71 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # ====== 研究人员表 ======
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS staff (
+                id VARCHAR(8) PRIMARY KEY,
+                center_id VARCHAR(8) DEFAULT '',
+                name VARCHAR(100) DEFAULT '',
+                initials VARCHAR(20) DEFAULT '',
+                role VARCHAR(50) DEFAULT '',
+                phone VARCHAR(50) DEFAULT '',
+                email VARCHAR(100) DEFAULT '',
+                auth_date VARCHAR(20) DEFAULT '',
+                cv_collected BOOLEAN DEFAULT FALSE,
+                cv_date VARCHAR(20) DEFAULT '',
+                gcp_collected BOOLEAN DEFAULT FALSE,
+                gcp_date VARCHAR(20) DEFAULT '',
+                license_collected BOOLEAN DEFAULT FALSE,
+                license_date VARCHAR(20) DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # ====== 伦理递交表 ======
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS ethics_submissions (
+                id VARCHAR(8) PRIMARY KEY,
+                center_id VARCHAR(8) DEFAULT '',
+                doc_type VARCHAR(50) DEFAULT '',
+                doc_name VARCHAR(200) DEFAULT '',
+                version VARCHAR(20) DEFAULT '',
+                version_date VARCHAR(20) DEFAULT '',
+                pi_sign_date VARCHAR(20) DEFAULT '',
+                submission_date VARCHAR(20) DEFAULT '',
+                review_method VARCHAR(50) DEFAULT '',
+                review_date VARCHAR(20) DEFAULT '',
+                approval_date VARCHAR(20) DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+        # ====== 方案偏离表 ======
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS protocol_deviations (
+                id VARCHAR(8) PRIMARY KEY,
+                center_id VARCHAR(8) DEFAULT '',
+                pd_number VARCHAR(20) DEFAULT '',
+                severity VARCHAR(10) DEFAULT 'Minor',
+                description TEXT DEFAULT '',
+                violated_clause TEXT DEFAULT '',
+                occurred_date VARCHAR(20) DEFAULT '',
+                discovered_date VARCHAR(20) DEFAULT '',
+                reported_sponsor_date VARCHAR(20) DEFAULT '',
+                reported_ethics_date VARCHAR(20) DEFAULT '',
+                subject_ids TEXT DEFAULT '',
+                corrective_action TEXT DEFAULT '',
+                status VARCHAR(20) DEFAULT 'Open',
+                notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         
         # 升级 centers 表：添加新字段（如果不存在）
         try:
@@ -711,6 +776,294 @@ def set_status_kv(key, value):
     except Exception as e:
         conn.rollback()
         print(f'[DB] set_status_kv error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ========== 研究人员 (Staff) ==========
+
+def get_staff(center_id=None):
+    conn = get_connection()
+    if conn is None:
+        return []
+    cur = conn.cursor()
+    if center_id:
+        cur.execute('SELECT * FROM staff WHERE center_id = %s ORDER BY created_at', (center_id,))
+    else:
+        cur.execute('SELECT * FROM staff ORDER BY created_at')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [serialize_row(r) for r in rows]
+
+def get_staff_member(staff_id):
+    conn = get_connection()
+    if conn is None:
+        return None
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM staff WHERE id = %s', (staff_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return serialize_row(row) if row else None
+
+def insert_staff(data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    # 生成 ID
+    cur.execute("SELECT COALESCE(MAX(CAST(SUBSTRING(id, 3) AS INTEGER)), 0) + 1 as next_id FROM staff WHERE id ~ '^[0-9]+$'")
+    # 简化：用当前时间戳
+    import time
+    next_num = int(time.time()) % 10000
+    staff_id = f'ST{next_num:04d}'
+    data['id'] = staff_id
+    fields = ['id'] + [k for k in data.keys() if k != 'id']
+    vals = [data.get(f) for f in fields]
+    placeholders = ','.join(['%s'] * len(fields))
+    sql = f"INSERT INTO staff ({','.join(fields)}) VALUES ({placeholders})"
+    try:
+        cur.execute(sql, vals)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] insert_staff error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return data
+
+def update_staff(staff_id, data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    data = {k: v for k, v in data.items() if k not in ('id', 'created_at')}
+    if not data:
+        cur.close()
+        conn.close()
+        return data
+    set_clause = ','.join([f"{k} = %s" for k in data.keys()])
+    sql = f"UPDATE staff SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+    try:
+        cur.execute(sql, list(data.values()) + [staff_id])
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] update_staff error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return {**data, 'id': staff_id}
+
+def delete_staff(staff_id):
+    conn = get_connection()
+    if conn is None:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM staff WHERE id = %s', (staff_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] delete_staff error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ========== 伦理递交 (Ethics Submissions) ==========
+
+def get_ethics_submissions(center_id=None):
+    conn = get_connection()
+    if conn is None:
+        return []
+    cur = conn.cursor()
+    if center_id:
+        cur.execute('SELECT * FROM ethics_submissions WHERE center_id = %s ORDER BY submission_date DESC NULLS LAST, created_at DESC', (center_id,))
+    else:
+        cur.execute('SELECT * FROM ethics_submissions ORDER BY submission_date DESC NULLS LAST, created_at DESC')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [serialize_row(r) for r in rows]
+
+def get_ethics_submission(sub_id):
+    conn = get_connection()
+    if conn is None:
+        return None
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM ethics_submissions WHERE id = %s', (sub_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return serialize_row(row) if row else None
+
+def insert_ethics_submission(data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    import time
+    next_num = int(time.time()) % 10000
+    sub_id = f'ES{next_num:04d}'
+    data['id'] = sub_id
+    fields = ['id'] + [k for k in data.keys() if k != 'id']
+    vals = [data.get(f) for f in fields]
+    placeholders = ','.join(['%s'] * len(fields))
+    sql = f"INSERT INTO ethics_submissions ({','.join(fields)}) VALUES ({placeholders})"
+    try:
+        cur.execute(sql, vals)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] insert_ethics_submission error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return data
+
+def update_ethics_submission(sub_id, data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    data = {k: v for k, v in data.items() if k not in ('id', 'created_at')}
+    if not data:
+        cur.close()
+        conn.close()
+        return data
+    set_clause = ','.join([f"{k} = %s" for k in data.keys()])
+    sql = f"UPDATE ethics_submissions SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+    try:
+        cur.execute(sql, list(data.values()) + [sub_id])
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] update_ethics_submission error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return {**data, 'id': sub_id}
+
+def delete_ethics_submission(sub_id):
+    conn = get_connection()
+    if conn is None:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM ethics_submissions WHERE id = %s', (sub_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] delete_ethics_submission error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+
+
+# ========== 方案偏离 (Protocol Deviations) ==========
+
+def get_protocol_deviations(center_id=None):
+    conn = get_connection()
+    if conn is None:
+        return []
+    cur = conn.cursor()
+    if center_id:
+        cur.execute('SELECT * FROM protocol_deviations WHERE center_id = %s ORDER BY pd_number', (center_id,))
+    else:
+        cur.execute('SELECT * FROM protocol_deviations ORDER BY pd_number')
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [serialize_row(r) for r in rows]
+
+def get_protocol_deviation(pd_id):
+    conn = get_connection()
+    if conn is None:
+        return None
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM protocol_deviations WHERE id = %s', (pd_id,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return serialize_row(row) if row else None
+
+def insert_protocol_deviation(data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    center_id = data.get('center_id', '')
+    # 生成 PD 编号：PD + 中心号(2位) + 序号(3位)
+    center_code = ''
+    if center_id:
+        cur.execute('SELECT code FROM centers WHERE id = %s', (center_id,))
+        row = cur.fetchone()
+        if row:
+            center_code = (row['code'] or '').zfill(2)
+            if len(center_code) > 2:
+                center_code = center_code[:2]
+    if not center_code:
+        center_code = '00'
+    # 查找该中心已有 PD 数量
+    cur.execute('SELECT COUNT(*) as cnt FROM protocol_deviations WHERE center_id = %s', (center_id,))
+    row = cur.fetchone()
+    seq = (row['cnt'] if row else 0) + 1
+    pd_number = f'PD{center_code}{seq:03d}'
+    data['id'] = pd_number[:8]
+    data['pd_number'] = pd_number
+    fields = ['id', 'pd_number'] + [k for k in data.keys() if k not in ('id', 'pd_number')]
+    vals = [data.get(f) for f in fields]
+    placeholders = ','.join(['%s'] * len(fields))
+    sql = f"INSERT INTO protocol_deviations ({','.join(fields)}) VALUES ({placeholders})"
+    try:
+        cur.execute(sql, vals)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] insert_protocol_deviation error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return data
+
+def update_protocol_deviation(pd_id, data):
+    conn = get_connection()
+    if conn is None:
+        return data
+    cur = conn.cursor()
+    data = {k: v for k, v in data.items() if k not in ('id', 'created_at')}
+    if not data:
+        cur.close()
+        conn.close()
+        return data
+    set_clause = ','.join([f"{k} = %s" for k in data.keys()])
+    sql = f"UPDATE protocol_deviations SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE id = %s"
+    try:
+        cur.execute(sql, list(data.values()) + [pd_id])
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] update_protocol_deviation error: {e}')
+    finally:
+        cur.close()
+        conn.close()
+    return {**data, 'id': pd_id}
+
+def delete_protocol_deviation(pd_id):
+    conn = get_connection()
+    if conn is None:
+        return
+    cur = conn.cursor()
+    try:
+        cur.execute('DELETE FROM protocol_deviations WHERE id = %s', (pd_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f'[DB] delete_protocol_deviation error: {e}')
     finally:
         cur.close()
         conn.close()

@@ -563,3 +563,32 @@ body {
     .top-bar { padding: 14px 16px; }
     #pageTitle { font-size: 1.4em; }
 }
+
+/* Tab bar */
+.tab-bar .tab-btn.active {
+    border-bottom-color: #3498db;
+    color: #3498db;
+    font-weight: bold;
+}
+.tab-bar .tab-btn:hover {
+    background: #f5f5f5;
+}
+
+/* Form row */
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+@media (max-width: 600px) {
+    .form-row { grid-template-columns: 1fr; }
+}
+
+/* Role badge */
+.role-badge {
+    background: #e8f4fd;
+    color: #2980b9;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}

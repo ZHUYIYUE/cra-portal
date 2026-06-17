@@ -578,6 +578,90 @@ def backup_data():
 
 # ========== 数据迁移 ==========
 
+# ========== 研究人员 ==========
+
+@app.route('/api/staff', methods=['GET', 'POST'])
+def handle_staff():
+    if request.method == 'GET':
+        center_id = request.args.get('center_id')
+        items = db.get_staff(center_id)
+        return jsonify({"success": True, "staff": items})
+    else:
+        data = request.json or {}
+        result = db.insert_staff(data)
+        return jsonify({"success": True, "staff": result}), 201
+
+@app.route('/api/staff/<staff_id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_staff_member(staff_id):
+    if request.method == 'GET':
+        item = db.get_staff_member(staff_id)
+        if not item:
+            return jsonify({"success": False, "error": "不存在"}), 404
+        return jsonify({"success": True, "staff": item})
+    elif request.method == 'PUT':
+        data = request.json or {}
+        result = db.update_staff(staff_id, data)
+        return jsonify({"success": True, "staff": result})
+    else:
+        db.delete_staff(staff_id)
+        return jsonify({"success": True})
+
+# ========== 伦理递交 ==========
+
+@app.route('/api/ethics', methods=['GET', 'POST'])
+def handle_ethics():
+    if request.method == 'GET':
+        center_id = request.args.get('center_id')
+        items = db.get_ethics_submissions(center_id)
+        return jsonify({"success": True, "ethics": items})
+    else:
+        data = request.json or {}
+        result = db.insert_ethics_submission(data)
+        return jsonify({"success": True, "ethics": result}), 201
+
+@app.route('/api/ethics/<sub_id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_ethics_submission(sub_id):
+    if request.method == 'GET':
+        item = db.get_ethics_submission(sub_id)
+        if not item:
+            return jsonify({"success": False, "error": "不存在"}), 404
+        return jsonify({"success": True, "ethics": item})
+    elif request.method == 'PUT':
+        data = request.json or {}
+        result = db.update_ethics_submission(sub_id, data)
+        return jsonify({"success": True, "ethics": result})
+    else:
+        db.delete_ethics_submission(sub_id)
+        return jsonify({"success": True})
+
+# ========== 方案偏离 ==========
+
+@app.route('/api/pds', methods=['GET', 'POST'])
+def handle_pds():
+    if request.method == 'GET':
+        center_id = request.args.get('center_id')
+        items = db.get_protocol_deviations(center_id)
+        return jsonify({"success": True, "pds": items})
+    else:
+        data = request.json or {}
+        result = db.insert_protocol_deviation(data)
+        return jsonify({"success": True, "pd": result}), 201
+
+@app.route('/api/pds/<pd_id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_pd(pd_id):
+    if request.method == 'GET':
+        item = db.get_protocol_deviation(pd_id)
+        if not item:
+            return jsonify({"success": False, "error": "不存在"}), 404
+        return jsonify({"success": True, "pd": item})
+    elif request.method == 'PUT':
+        data = request.json or {}
+        result = db.update_protocol_deviation(pd_id, data)
+        return jsonify({"success": True, "pd": result})
+    else:
+        db.delete_protocol_deviation(pd_id)
+        return jsonify({"success": True})
+
 # ========== 导出 Excel ==========
 
 @app.route('/api/export/<sheet_type>', methods=['GET'])
