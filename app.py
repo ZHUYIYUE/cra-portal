@@ -5,10 +5,10 @@ PostgreSQL 版：数据持久化到数据库，不受 Render 重启影响
 v2026-06-17: 中心详情API + 仪表盘升级
 """
 
-import os
+import os, glob
 import json
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 from io import BytesIO
@@ -817,3 +817,33 @@ if __name__ == '__main__':
     startup()
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
+
+# ========== 备份清理 ==========
+
+@app.route('/api/cleanup_backups', methods=['POST'])
+def cleanup_backups():
+    """清理7天前的旧备份文件"""
+    try:
+        backup_dir = os.path.join(os.path.dirname(__file__), 'backups')
+        if not os.path.exists(backup_dir):
+            return jsonify({"success": True, "removed": 0, "message": "备份目录不存在"})
+        
+        cutoff = datetime.now() - timedelta(days=7)
+        removed = 0
+        removed_files = []
+        
+        for f in glob.glob(os.path.join(backup_dir, 'cra-portal-backup-*.json')):
+            mtime = datetime.fromtimestamp(os.path.getmtime(f))
+            if mtime < cutoff:
+                os.remove(f)
+                removed += 1
+                removed_files.append(os.path.basename(f))
+        
+        return jsonify({
+            "success": True,
+            "removed": removed,
+            "files": removed_files,
+            "message": f"清理完成，删除 {removed} 个旧备份"
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
