@@ -85,9 +85,10 @@ def delete_project(project_id):
 
 @app.route('/api/tasks', methods=['GET'])
 def get_all_tasks():
-    tasks = db.get_tasks()
+    center_id = request.args.get('center_id')
     project_id = request.args.get('project_id')
-    if project_id:
+    tasks = db.get_tasks(center_id=center_id, project_id=project_id if not center_id else None)
+    if center_id and project_id:
         tasks = [t for t in tasks if t.get('project_id') == project_id]
     
     centers = db.get_centers()
