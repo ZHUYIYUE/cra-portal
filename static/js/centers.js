@@ -32,15 +32,14 @@ window.loadCenterDetail = async function(content) {
         fetch(`/api/ethics?center_id=${centerId}`),
         fetch(`/api/pds?center_id=${centerId}`),
         fetch(`/api/tasks?center_id=${centerId}`),
-        fetch(`/api/findings`)
+        fetch(`/api/findings?center_id=${centerId}`)
     ]);
     const centerData = await centerRes.json();
     const staff = (await staffRes.json()).staff || [];
     const ethics = (await ethicsRes.json()).ethics || [];
     const pds = (await pdsRes.json()).pds || [];
     const centerTasks = (await tasksRes.json()).tasks || [];
-    const allFindings = (await findingsRes.json()).findings || [];
-    const centerFindings = allFindings.filter(f => f.center_id === centerId);
+    const centerFindings = (await findingsRes.json()).findings || [];
 
     const center = centerData.center || {};
     const today = new Date().toISOString().split('T')[0];
@@ -96,7 +95,7 @@ window.refreshCacheAndTab = async function(tabs) {
     if (tabs.includes('ethics')) needs.push(fetch(`/api/ethics?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.ethics = d.ethics || []; }));
     if (tabs.includes('pds')) needs.push(fetch(`/api/pds?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.pds = d.pds || []; }));
     if (tabs.includes('tasks')) needs.push(fetch(`/api/tasks?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.centerTasks = d.tasks || []; }));
-    if (tabs.includes('findings')) needs.push(fetch(`/api/findings`).then(r => r.json()).then(d => { window._cdc.centerFindings = (d.findings || []).filter(f => f.center_id === centerId); }));
+    if (tabs.includes('findings')) needs.push(fetch(`/api/findings?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.centerFindings = d.findings || []; }));
     await Promise.all(needs);
     window.refreshTabFromCache(window.state ? window.state.centerDetailTab : '概览');
 };
