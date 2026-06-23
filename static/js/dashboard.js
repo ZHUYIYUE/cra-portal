@@ -1,7 +1,7 @@
-// ========== 总览页面 + 地图初始化 ==========
+// ========== 总览页面 + 日历 ==========
 
-// 中心地图实例（全局，避免重复创建）
-let _centerMap = null;
+// 当前日历月份
+let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
     const [statsRes, projectsRes, centersRes] = await Promise.all([
@@ -68,11 +68,19 @@ window.loadDashboard = async function(content) {
         ${s.overdue_tasks > 0 ? `<div class="alert-banner" style="background:#ffebee;border-left:4px solid #f44336;"><i class="fas fa-exclamation-triangle" style="color:#f44336;"></i> 有 <strong>${s.overdue_tasks}</strong> 个待办已逾期！</div>` : ''}
         ${s.due_soon > 0 ? `<div class="alert-banner" style="background:#fff8e1;border-left:4px solid #ff9800;"><i class="fas fa-clock" style="color:#ff9800;"></i> 有 <strong>${s.due_soon}</strong> 个任务将在7天内到期！</div>` : ''}
 
-        ${centers.length > 0 ? `
         <div class="card">
-            <div class="card-header"><i class="fas fa-map-marked-alt"></i> 中心分布</div>
-            <div id="centerMap" class="map-container"></div>
-        </div>` : ''}
+            <div class="card-header">
+                <i class="fas fa-calendar-alt"></i> 任务日历
+                <div class="cal-nav">
+                    <button onclick="window.calPrev()" class="cal-nav-btn"><i class="fas fa-chevron-left"></i></button>
+                    <span id="calTitle"></span>
+                    <button onclick="window.calNext()" class="cal-nav-btn"><i class="fas fa-chevron-right"></i></button>
+                    <button onclick="window.calToday()" class="cal-nav-btn" style="margin-left:8px;font-size:12px;">今天</button>
+                </div>
+            </div>
+            <div id="calGrid" class="cal-grid"></div>
+            <div id="calPopup" class="cal-popup" style="display:none;"></div>
+        </div>
 
         <div class="card">
             <div class="card-header"><i class="fas fa-folder"></i> 项目列表</div>
@@ -93,107 +101,124 @@ window.loadDashboard = async function(content) {
         </div>
     `;
     
-    // 初始化中心地图（失败不影响页面其他内容）
-    if (centers.length > 0) {
-        try { window.initCenterMap(centers); } catch(e) {
-            console.warn('地图初始化失败:', e);
-            const mapEl = document.getElementById('centerMap');
-            if (mapEl) mapEl.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 地图加载失败</p>';
-        }
-    }
+    // 初始化日历
+    const now = new Date();
+    _calYear = now.getFullYear();
+    _calMonth = now.getMonth();
+    window.renderCal();
 };
 
-window.initCenterMap = function(centers) {
-    const el = document.getElementById('centerMap');
-    if (!el) return;
+window.renderCal = async function() {
+    // 获取所有未完成任务
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    const tasks = (data.tasks || []).filter(t => !t.done && t.due_date);
     
-    // 安全检查：Leaflet 是否加载
-    if (typeof L === 'undefined') {
-        el.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 地图组件加载中，请稍候刷新</p>';
-        return;
-    }
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     
-    // 清理旧地图
-    if (_centerMap) {
-        _centerMap.remove();
-        _centerMap = null;
-    }
+    // 按日期分组
+    const byDate = {};
+    tasks.forEach(t => {
+        if (!byDate[t.due_date]) byDate[t.due_date] = [];
+        byDate[t.due_date].push(t);
+    });
     
-    // 收集有坐标的中心
-    const points = [];
-    centers.forEach(c => {
-        const city = window._getCenterCity(c.name || '');
-        if (city && window._cityCoords[city]) {
-            const ms = Array.isArray(c.milestones) ? c.milestones : [];
-            const done = ms.filter(m => m.done).length;
-            const total = ms.length;
-            const pct = total > 0 ? Math.round(done / total * 100) : 0;
-            points.push({
-                id: c.id,
-                code: c.code,
-                name: c.name,
-                city,
-                lat: window._cityCoords[city][0],
-                lng: window._cityCoords[city][1],
-                pct,
-                done, total,
-                tasks: c.task_count || 0,
-                openFindings: c.open_finding_count || 0,
-                projectId: c.project_id || ''
-            });
+    const title = document.getElementById('calTitle');
+    if (title) title.textContent = `${_calYear}年${_calMonth+1}月`;
+    
+    const grid = document.getElementById('calGrid');
+    if (!grid) return;
+    
+    const firstDay = new Date(_calYear, _calMonth, 1);
+    const lastDay = new Date(_calYear, _calMonth + 1, 0);
+    const startDow = firstDay.getDay(); // 0=Sun
+    const daysInMonth = lastDay.getDate();
+    
+    // 周头
+    const weekDays = ['日','一','二','三','四','五','六'];
+    let html = '<div class="cal-row cal-header">' + weekDays.map(d => `<div class="cal-cell">${d}</div>`).join('') + '</div>';
+    
+    // 日期格
+    let dayNum = 1;
+    const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+    for (let i = 0; i < totalCells; i++) {
+        if (i % 7 === 0) html += '<div class="cal-row">';
+        if (i < startDow || dayNum > daysInMonth) {
+            html += '<div class="cal-cell cal-empty"></div>';
+        } else {
+            const dateStr = `${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+            const dayTasks = byDate[dateStr] || [];
+            const isToday = dateStr === todayStr;
+            const isOverdue = dateStr < todayStr && dayTasks.length > 0;
+            const cls = ['cal-cell', 'cal-day', isToday && 'cal-today', isOverdue && 'cal-overdue'].filter(Boolean).join(' ');
+            html += `<div class="${cls}" onclick="window.showDayTasks('${dateStr}')">
+                <span class="cal-daynum">${dayNum}</span>
+                ${dayTasks.length > 0 ? `<span class="cal-badge${dayTasks.some(t=>t.priority==='high')?' cal-badge-high':''}">${dayTasks.length}</span>` : ''}
+            </div>`;
+            dayNum++;
         }
-    });
+        if (i % 7 === 6) html += '</div>';
+    }
+    grid.innerHTML = html;
+};
+
+window.showDayTasks = function(dateStr) {
+    const popup = document.getElementById('calPopup');
+    if (!popup) return;
     
-    if (points.length === 0) {
-        el.innerHTML = '<p style="color:#999;padding:20px;text-align:center;">⚠️ 暂无已定位的中心</p>';
+    // 关闭已打开的弹窗
+    if (popup.style.display !== 'none' && popup.dataset.date === dateStr) {
+        popup.style.display = 'none';
         return;
     }
     
-    // 计算中心点
-    const avgLat = points.reduce((s,p) => s+p.lat, 0) / points.length;
-    const avgLng = points.reduce((s,p) => s+p.lng, 0) / points.length;
-    
-    _centerMap = L.map('centerMap').setView([avgLat, avgLng], 7);
-    
-    // 高德底图（国内速度快）
-    L.tileLayer('https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
-        attribution: '&copy; AutoNavi',
-        maxZoom: 18,
-        minZoom: 4
-    }).addTo(_centerMap);
-    
-    // 给每个中心加标记
-    points.forEach(p => {
-        const color = p.projectId && p.projectId.includes('3142') ? '#3498db' : '#e67e22';
-        const radius = Math.max(8, 8 + Math.min(p.tasks + p.openFindings, 5));
+    fetch('/api/tasks').then(r => r.json()).then(data => {
+        const tasks = (data.tasks || []).filter(t => t.due_date === dateStr);
+        popup.dataset.date = dateStr;
         
-        const marker = L.circleMarker([p.lat, p.lng], {
-            radius,
-            fillColor: color,
-            color: '#fff',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.85
-        }).addTo(_centerMap);
-        
-        marker.bindPopup(`
-            <div style="min-width:200px;">
-                <div style="font-weight:600;font-size:15px;color:#2c3e50;border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:6px;">
-                    ${window.escHtml(p.city)} ${window.escHtml(p.name)}
-                </div>
-                <table style="font-size:13px;width:100%;">
-                    <tr><td style="color:#888;padding:2px 6px 2px 0;">进度</td><td style="font-weight:500;"><span style="color:${p.pct === 100 ? '#27ae60' : p.pct >= 50 ? '#f39c12' : '#3498db'};">${p.pct}%</span> (${p.done}/${p.total})</td></tr>
-                    <tr><td style="color:#888;padding:2px 6px 2px 0;">待办</td><td style="font-weight:500;">${p.tasks > 0 ? '<span style="color:#e67e22;">'+p.tasks+'</span>' : p.tasks}</td></tr>
-                    ${p.openFindings > 0 ? `<tr><td style="color:#888;padding:2px 6px 2px 0;">问题</td><td style="font-weight:500;color:#e74c3c;">${p.openFindings}</td></tr>` : ''}
-                </table>
-                <button onclick="window.openCenterDetail('${p.id}')" style="margin-top:6px;padding:4px 12px;background:#3498db;color:white;border:none;border-radius:4px;cursor:pointer;font-size:12px;">查看详情 →</button>
-            </div>
-        `);
+        if (tasks.length === 0) {
+            popup.innerHTML = `<div class="cal-popup-title">${dateStr}</div><p style="color:#999;padding:10px;">该日无到期任务</p>`;
+        } else {
+            const doneCount = tasks.filter(t => t.done).length;
+            popup.innerHTML = `<div class="cal-popup-title">${dateStr} <small>(${doneCount}/${tasks.length} 已完成)</small></div>` +
+                tasks.map(t => {
+                    const pClass = t.priority === 'high' ? 'cal-task-high' : t.priority === 'medium' ? 'cal-task-med' : 'cal-task-low';
+                    const statusIcon = t.done ? '✅' : (dateStr < new Date().toISOString().slice(0,10) ? '🔴' : '⚪');
+                    return `<div class="cal-task-item ${pClass}" onclick="window.viewTask('${t.id}')">
+                        ${statusIcon} <span class="${t.done ? 'cal-task-done' : ''}">${window.escHtml(t.title)}</span>
+                        <small>${t.center_name || ''}</small>
+                    </div>`;
+                }).join('');
+        }
+        popup.style.display = 'block';
     });
-    
-    // 适应所有标记
-    const bounds = points.map(p => [p.lat, p.lng]);
-    if (bounds.length > 1) {
-        _centerMap.fitBounds(bounds, {padding: [40, 40]});
-    }
+};
+
+window.calPrev = function() {
+    _calMonth--;
+    if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+    window.renderCal();
+};
+
+window.calNext = function() {
+    _calMonth++;
+    if (_calMonth > 11) { _calMonth = 0; _calYear++; }
+    window.renderCal();
+};
+
+window.calToday = function() {
+    const now = new Date();
+    _calYear = now.getFullYear();
+    _calMonth = now.getMonth();
+    window.renderCal();
+};
+
+window.viewTask = function(taskId) {
+    // 跳转到任务页并高亮
+    document.querySelector('[data-page="tasks"]').click();
+    setTimeout(() => {
+        const el = document.querySelector(`[data-task-id="${taskId}"]`);
+        if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 500);
 };

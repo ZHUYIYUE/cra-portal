@@ -946,14 +946,123 @@ body {
     text-align: center;
 }
 
-/* ====== 中心地图 ====== */
-.map-container {
-    height: 400px;
-    width: 100%;
-    border-radius: 10px;
-    overflow: hidden;
-    z-index: 0;
+/* ====== 任务日历 ====== */
+.cal-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    font-size: 14px;
 }
-@media (max-width: 600px) {
-    .map-container { height: 300px; }
+.cal-nav-btn {
+    background: #f0f2f5;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background .15s;
 }
+.cal-nav-btn:hover { background: #e2e6ea; }
+.cal-grid {
+    user-select: none;
+}
+.cal-row {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+.cal-cell {
+    text-align: center;
+    padding: 6px 2px;
+    font-size: 13px;
+    min-height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    position: relative;
+}
+.cal-header .cal-cell {
+    font-weight: 600;
+    color: #888;
+    min-height: auto;
+    padding: 8px 2px;
+}
+.cal-day {
+    cursor: pointer;
+    transition: background .15s;
+}
+.cal-day:hover { background: #f0f4ff; }
+.cal-today {
+    background: #e8f0fe;
+    font-weight: 700;
+}
+.cal-today .cal-daynum {
+    background: #3498db;
+    color: #fff;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.cal-overdue .cal-daynum {
+    color: #e74c3c;
+}
+.cal-badge {
+    font-size: 10px;
+    background: #ff9800;
+    color: #fff;
+    border-radius: 8px;
+    padding: 1px 5px;
+    margin-top: 2px;
+    line-height: 1.3;
+}
+.cal-badge-high {
+    background: #e74c3c;
+}
+.cal-empty {
+    opacity: 0;
+}
+/* 日历弹窗 */
+.cal-popup {
+    margin-top: 10px;
+    background: #fafbfc;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #e8ecf0;
+}
+.cal-popup-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #eee;
+}
+.cal-popup-title small {
+    color: #999;
+    font-weight: 400;
+}
+.cal-task-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background .15s;
+    font-size: 13px;
+}
+.cal-task-item:hover { background: #f0f2f5; }
+.cal-task-item small {
+    margin-left: auto;
+    color: #999;
+    font-size: 11px;
+}
+.cal-task-high { border-left: 3px solid #e74c3c; }
+.cal-task-med  { border-left: 3px solid #ff9800; }
+.cal-task-low  { border-left: 3px solid #27ae60; }
+.cal-task-done { text-decoration: line-through; color: #999; }
