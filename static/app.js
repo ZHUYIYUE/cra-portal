@@ -1,417 +1,228 @@
-// CRA Portal 前端逻辑
+// CRA Portal 前端逻辑 - v2026-06-19 (模块化重构版)
 
-// 全局状态
-const state = {
-    currentPage: 'dashboard',
-    projects: [],
-    currentProject: null
+// ========== 全局错误捕获（帮助定位白屏问题）==========
+window.onerror = function(msg, src, line, col, err) {
+    console.error('JS错误:', msg, '\n行:', line, '\n来源:', src);
+    var el = document.getElementById('pageContent');
+    if (el && !el.innerHTML.trim()) {
+        el.innerHTML = '<div style="padding:20px;color:#e74c3c;"><p>⚠️ 页面加载出错</p><pre style="font-size:12px;overflow:auto;">' + String(msg) + ' (行' + line + ')</pre></div>';
+    }
 };
 
-// 初始化
+// ========== 全局状态 ==========
+window.state = {
+    currentPage: 'dashboard',
+    projects: [],
+    tasks: [],
+    currentProject: null,
+    currentCenterId: null,
+    centerDetailTab: '概览'
+};
+
+// ========== 初始化 ==========
+
 document.addEventListener('DOMContentLoaded', function() {
-    initApp();
+    window.initApp();
 });
 
-function initApp() {
-    // 绑定侧边栏导航
+window.initApp = function() {
+    // 自动加载总览页
+    window.navigateTo('dashboard');
+    
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', function(e) {
             e.preventDefault();
-            const page = this.dataset.page;
-            navigateTo(page);
+            window.navigateTo(this.dataset.page);
         });
     });
     
-    // 绑定菜单切换（移动端）
-    document.getElementById('menuToggle').addEventListener('click', function() {
-        document.getElementById('sidebar').classList.toggle('show');
-    });
-    
-    // 加载初始页面
-    navigateTo('dashboard');
-}
+    var menuToggle = document.getElementById('menuToggle');
+    if (menuToggle) {
+        menuToggle.addEventListener('click', function() {
+            var sb = document.getElementById('sidebar');
+            var ov = document.getElementById('sidebarOverlay');
+            if (sb) sb.classList.toggle('show');
+            if (ov) ov.classList.toggle('show', sb && sb.classList.contains('show'));
+        });
+    }
 
-// 页面导航
-async function navigateTo(page) {
-    state.currentPage = page;
-    
-    // 更新侧边栏激活状态
     document.querySelectorAll('.nav-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.dataset.page === page) {
-            item.classList.add('active');
-        }
+        item.addEventListener('click', function() {
+            if (window.innerWidth <= 768) window.closeSidebar();
+        });
+    });
+
+    var modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', function(e) {
+            if (e.target === this) window.closeModal();
+        });
+    }
+};
+
+// ========== 页面导航 ==========
+
+window.navigateTo = async function(page) {
+    window.state.currentPage = page;
+    
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.page === page);
     });
     
-    // 更新页面标题
-    const titles = {
-        dashboard: '总览',
-        projects: '项目',
-        tasks: '待办事项',
-        files: '文件管理'
-    };
-    document.getElementById('pageTitle').textContent = titles[page];
+    var titles = { dashboard: '总览', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题' };
+    var pageTitle = document.getElementById('pageTitle');
+    if (pageTitle) pageTitle.textContent = titles[page] || '总览';
     
-    // 加载页面内容
-    showLoading();
+    window.showLoading();
     try {
-        await loadPage(page);
+        await window.loadPage(page);
     } catch (error) {
-        console.error('加载页面失败:', error);
-        showError('加载失败，请刷新重试');
+        console.error('加载失败:', error);
+        window.showError('加载失败，请刷新重试');
     } finally {
-        hideLoading();
+        window.hideLoading();
     }
-}
+};
 
-// 加载页面内容
-async function loadPage(page) {
-    const content = document.getElementById('pageContent');
-    
+window.loadPage = async function(page) {
+    var content = document.getElementById('pageContent');
+    if (!content) return;
     switch(page) {
-        case 'dashboard':
-            await loadDashboard(content);
-            break;
-        case 'projects':
-            await loadProjects(content);
-            break;
-        case 'tasks':
-            await loadTasks(content);
-            break;
-        case 'files':
-            await loadFiles(content);
-            break;
+        case 'dashboard': await window.loadDashboard(content); break;
+        case 'projects': await window.loadProjects(content); break;
+        case 'tasks': await window.loadTasks(content); break;
+        case 'recommend': await window.loadRecommend(content); break;
+        case 'startup': await window.loadStartup(content); break;
+        case 'findings': await window.loadFindings(content); break;
+        case 'center-detail': await window.loadCenterDetail(content); break;
     }
-}
+};
 
-// 总览页面
-async function loadDashboard(content) {
-    const response = await fetch('/api/projects');
-    const data = await response.json();
-    
-    if (!data.success) {
-        content.innerHTML = '<div class="card"><p>加载失败</p></div>';
-        return;
-    }
-    
-    state.projects = data.projects;
-    
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-tachometer-alt"></i> 工作台总览
-            </div>
-            <p>欢迎使用CRA Portal！当前有 <strong>${data.projects.length}</strong> 个活跃项目。</p>
+// ========== 模态框操作 ==========
+
+window.openModal = function(html) {
+    var modalContent = document.getElementById('modalContent');
+    var modalOverlay = document.getElementById('modalOverlay');
+    if (modalContent) modalContent.innerHTML = html;
+    if (modalOverlay) modalOverlay.classList.add('show');
+};
+
+window.closeModal = function() {
+    var modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay) modalOverlay.classList.remove('show');
+};
+
+// ========== 启动任务相关（保留在 app.js 因为被多个模块调用）==========
+
+window.showAddStartupTaskModal = function() {
+    window.openModal(`
+        <h3><i class="fas fa-plus"></i> 添加启动任务</h3>
+        <div class="form-group">
+            <label>任务名称 *</label>
+            <input type="text" id="startupTaskName" placeholder="例如：整理CRA Portal待办">
         </div>
-        
-        <div class="projects-grid">
-    `;
-    
-    for (const project of data.projects) {
-        const detailResponse = await fetch(`/api/project/${project.id}`);
-        const detail = await detailResponse.json();
-        
-        html += `
-            <div class="project-card" onclick="viewProject('${project.id}')">
-                <h3><i class="fas fa-folder"></i> ${project.name}</h3>
-                ${detail.success ? `
-                    <p>项目编号: ${detail.project_id || '未设置'}</p>
-                    <p>中心数量: ${detail.centers ? detail.centers.length : 0}</p>
-                ` : ''}
-                <span class="status status-active">进行中</span>
-            </div>
-        `;
-    }
-    
-    html += '</div>';
-    content.innerHTML = html;
-}
-
-// 项目列表页面
-async function loadProjects(content) {
-    const response = await fetch('/api/projects');
-    const data = await response.json();
-    
-    if (!data.success) {
-        content.innerHTML = '<div class="card"><p>加载失败</p></div>';
-        return;
-    }
-    
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-folder-open"></i> 项目管理
-            </div>
-            <button class="btn btn-primary" onclick="showCreateProject()">
-                <i class="fas fa-plus"></i> 新建项目
-            </button>
+        <div class="form-group">
+            <label>描述</label>
+            <textarea id="startupTaskDesc" placeholder="简短描述这个启动任务的作用"></textarea>
         </div>
-        
-        <div class="projects-grid">
-    `;
-    
-    for (const project of data.projects) {
-        const detailResponse = await fetch(`/api/project/${project.id}`);
-        const detail = await detailResponse.json();
-        
-        html += `
-            <div class="project-card" onclick="viewProject('${project.id}')">
-                <h3><i class="fas fa-folder"></i> ${detail.success ? detail.project_name || project.name : project.name}</h3>
-                ${detail.success ? `
-                    <p>编号: ${detail.project_id || '未设置'}</p>
-                    <p>中心: ${detail.centers ? detail.centers.length : 0} 个</p>
-                ` : ''}
-                <span class="status status-active">进行中</span>
-            </div>
-        `;
-    }
-    
-    html += '</div>';
-    content.innerHTML = html;
-}
-
-// 查看项目详情
-async function viewProject(projectId) {
-    const response = await fetch(`/api/project/${projectId}`);
-    const data = await response.json();
-    
-    if (!data.success) {
-        alert('加载项目详情失败');
-        return;
-    }
-    
-    state.currentProject = projectId;
-    
-    const content = document.getElementById('pageContent');
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-folder"></i> ${data.project_name || projectId}
-                <button class="btn btn-primary" style="margin-left: auto;" onclick="editProject('${projectId}')">
-                    <i class="fas fa-edit"></i> 编辑
-                </button>
-            </div>
-            <p><strong>项目编号:</strong> ${data.project_id || '未设置'}</p>
+        <div class="modal-actions">
+            <button class="btn" onclick="window.closeModal()">取消</button>
+            <button class="btn btn-primary" onclick="window.saveStartupTask()">保存</button>
         </div>
-        
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-hospital"></i> 研究中心
-            </div>
-            <div class="center-list">
-    `;
-    
-    if (data.centers && data.centers.length > 0) {
-        data.centers.forEach(center => {
-            html += `
-                <div class="center-item">
-                    <h4>${center.id} 中心</h4>
-                    <p>状态: ${center.status}</p>
-                </div>
-            `;
-        });
-    } else {
-        html += '<p>暂无中心信息</p>';
-    }
-    
-    html += `
-            </div>
+    `);
+};
+
+// ========== 导出 Excel ==========
+
+window.showExportMenu = function() {
+    var menuHtml = `
+    <div class="modal-overlay" onclick="window.closeExportModal(event)" style="display:flex;justify-content:center;align-items:center;">
+      <div class="modal" style="width:320px;padding:24px;">
+        <h3 style="margin:0 0 16px;font-size:18px;">导出 Excel</h3>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="btn" onclick="window.exportExcel('tasks')" style="width:100%;">
+            📋 待办事项
+          </button>
+          <button class="btn" onclick="window.exportExcel('findings')" style="width:100%;">
+            🔍 监查问题
+          </button>
+          <button class="btn" onclick="window.exportExcel('centers')" style="width:100%;">
+            🏥 中心信息
+          </button>
+          <button class="btn" onclick="window.exportExcel('projects')" style="width:100%;">
+            📊 项目信息
+          </button>
+          <button class="btn btn-primary" onclick="window.exportExcel('all')" style="width:100%;">
+            📦 全部数据
+          </button>
         </div>
-        
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-file-alt"></i> 项目文档
-            </div>
-            <div id="projectFiles">
-                <p>加载中...</p>
-            </div>
-        </div>
-    `;
-    
-    content.innerHTML = html;
-    
-    // 加载项目文件
-    loadProjectFiles(projectId);
-}
+        <button class="btn btn-outline" onclick="window.closeExportModal()" style="width:100%;margin-top:12px;">取消</button>
+      </div>
+    </div>`;
+    var div = document.createElement('div');
+    div.id = 'exportModal';
+    div.innerHTML = menuHtml;
+    document.body.appendChild(div);
+};
 
-// 编辑项目
-function editProject(projectId) {
-    fetch(`/api/project/${projectId}`)
-        .then(res => res.json())
-        .then(data => {
-            if (!data.success) {
-                alert('加载失败');
-                return;
-            }
-            
-            const content = document.getElementById('pageContent');
-            content.innerHTML = `
-                <div class="card">
-                    <div class="card-header">
-                        <i class="fas fa-edit"></i> 编辑项目
-                    </div>
-                    <textarea id="editor" style="width: 100%; height: 500px; font-family: monospace; padding: 10px;">${data.raw_content}</textarea>
-                    <div style="margin-top: 15px;">
-                        <button class="btn btn-success" onclick="saveProject('${projectId}')">
-                            <i class="fas fa-save"></i> 保存
-                        </button>
-                        <button class="btn" onclick="viewProject('${projectId}')" style="margin-left: 10px;">
-                            取消
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-}
+window.closeExportModal = function(e) {
+    if (e && e.target !== e.currentTarget) return;
+    var modal = document.getElementById('exportModal');
+    if (modal) modal.remove();
+};
 
-// 保存项目
-async function saveProject(projectId) {
-    const content = document.getElementById('editor').value;
-    
-    const response = await fetch(`/api/project/${projectId}/update`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: content })
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-        alert('保存成功！');
-        viewProject(projectId);
-    } else {
-        alert('保存失败: ' + data.error);
-    }
-}
-
-// 加载项目文件
-async function loadProjectFiles(projectId) {
-    const response = await fetch(`/api/files/${projectId}`);
-    const data = await response.json();
-    
-    if (!data.success) {
-        document.getElementById('projectFiles').innerHTML = '<p>加载失败</p>';
-        return;
-    }
-    
-    let html = '<ul style="list-style: none; padding: 0;">';
-    data.files.forEach(file => {
-        html += `
-            <li style="padding: 10px; border-bottom: 1px solid #eee;">
-                <i class="fas fa-file"></i>
-                <a href="/api/files/${projectId}/${file.path}" target="_blank">${file.name}</a>
-                <span style="color: #999; font-size: 0.9em; margin-left: 10px;">
-                    ${(file.size / 1024).toFixed(2)} KB
-                </span>
-            </li>
-        `;
-    });
-    html += '</ul>';
-    
-    const container = document.getElementById('projectFiles');
-    if (container) {
-        container.innerHTML = html;
-    }
-}
-
-// 待办事项页面
-async function loadTasks(content) {
-    const response = await fetch('/api/tasks');
-    const data = await response.json();
-    
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-tasks"></i> 待办事项
-            </div>
-            <button class="btn btn-primary" onclick="showAddTask()">
-                <i class="fas fa-plus"></i> 新建待办
-            </button>
-        </div>
-        
-        <div class="task-list">
-    `;
-    
-    if (data.success && data.tasks && data.tasks.length > 0) {
-        data.tasks.forEach(task => {
-            html += `
-                <div class="task-item">
-                    <input type="checkbox" class="task-checkbox">
-                    <div class="task-content">
-                        <h4>${task.title || '未命名任务'}</h4>
-                        <p class="task-meta">${task.project || ''} · ${task.due || '无截止日期'}</p>
-                    </div>
-                    <span class="task-priority priority-${task.priority || 'medium'}">${task.priority || '中'}</span>
-                </div>
-            `;
-        });
-    } else {
-        html += '<p>暂无待办事项</p>';
-    }
-    
-    html += '</div>';
-    content.innerHTML = html;
-}
-
-// 文件管理页面
-async function loadFiles(content) {
-    const response = await fetch('/api/projects');
-    const data = await response.json();
-    
-    let html = `
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-file-alt"></i> 文件管理
-            </div>
-        </div>
-    `;
-    
-    if (data.success && data.projects) {
-        for (const project of data.projects) {
-            html += `
-                <div class="card">
-                    <h3><i class="fas fa-folder"></i> ${project.name}</h3>
-                    <div id="files-${project.id}">加载中...</div>
-                </div>
-            `;
+window.exportExcel = async function(type) {
+    window.closeExportModal();
+    try {
+        var res = await fetch(`/api/export/${type}`);
+        if (!res.ok) {
+            var err = await res.json().catch(function() { return {error: '导出失败'}; });
+            throw new Error(err.error || '导出失败');
         }
-    }
-    
-    content.innerHTML = html;
-    
-    // 加载每个项目的文件
-    if (data.success && data.projects) {
-        for (const project of data.projects) {
-            loadProjectFiles(project.id);
+        var blob = await res.blob();
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        var disposition = res.headers.get('Content-Disposition');
+        var filename = `cra-portal-${type}.xlsx`;
+        if (disposition) {
+            var match = disposition.match(/filename=(.+)/);
+            if (match) filename = match[1].replace(/"/g, '');
         }
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('❌ 导出失败: ' + err.message);
     }
-}
+};
 
-// 显示加载动画
-function showLoading() {
-    document.getElementById('loading').classList.add('show');
-}
+// ========== 数据备份 ==========
 
-function hideLoading() {
-    document.getElementById('loading').classList.remove('show');
-}
-
-function showError(message) {
-    const content = document.getElementById('pageContent');
-    content.innerHTML = `
-        <div class="card">
-            <p style="color: red;"><i class="fas fa-exclamation-circle"></i> ${message}</p>
-        </div>
-    `;
-}
-
-// 占位函数（后续实现）
-function showCreateProject() {
-    alert('功能开发中...');
-}
-
-function showAddTask() {
-    alert('功能开发中...');
-}
+window.backupData = async function() {
+    if (!confirm('确定导出数据备份？备份文件将自动下载。')) return;
+    try {
+        var res = await fetch('/api/backup');
+        if (!res.ok) throw new Error('备份失败');
+        var blob = await res.blob();
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        var disposition = res.headers.get('Content-Disposition');
+        var filename = 'cra-portal-backup.json';
+        if (disposition) {
+            var match = disposition.match(/filename=(.+)/);
+            if (match) filename = match[1].replace(/"/g, '');
+        }
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        alert('✅ 备份成功！文件已下载。');
+    } catch (err) {
+        alert('❌ 备份失败: ' + err.message);
+    }
+};

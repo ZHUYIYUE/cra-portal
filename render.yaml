@@ -1,0 +1,9 @@
+# CRA Portal - Render 部署配置 v2.0 (Supabase)
+# 数据库已从 Render PostgreSQL 迁移到 Supabase
+
+runtime: python3
+entrypoint: gunicorn app:app
+
+# 环境变量需在 Render Dashboard 手动设置：
+# SUPABASE_URL  = https://xxx.supabase.co
+# SUPABASE_KEY  = eyJxxx... (anon key 或 service_role key)

@@ -4,14 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRA Portal - 临床研究助理管理中心</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
 </head>
 <body>
+    <!-- 移动端遮罩层 -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
     <!-- 侧边栏 -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h2><i class="fas fa-hospital-alt"></i> CRA Portal</h2>
+            <button class="sidebar-close" onclick="closeSidebar()" aria-label="关闭菜单">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
         <nav class="sidebar-nav">
             <a href="#" class="nav-item active" data-page="dashboard">
@@ -23,8 +30,14 @@
             <a href="#" class="nav-item" data-page="tasks">
                 <i class="fas fa-tasks"></i> 待办事项
             </a>
-            <a href="#" class="nav-item" data-page="files">
-                <i class="fas fa-file-alt"></i> 文件管理
+            <a href="#" class="nav-item" data-page="findings">
+                <i class="fas fa-search"></i> 监查问题
+            </a>
+            <a href="#" class="nav-item" data-page="recommend">
+                <i class="fas fa-brain"></i> 状态推荐
+            </a>
+            <a href="#" class="nav-item" data-page="startup">
+                <i class="fas fa-rocket"></i> 启动任务
             </a>
         </nav>
     </div>
@@ -37,15 +50,26 @@
                 <i class="fas fa-bars"></i>
             </button>
             <h1 id="pageTitle">总览</h1>
+            <div class="header-actions">
+                <button class="btn btn-sm btn-outline" onclick="backupData()" title="导出数据备份">
+                    <i class="fas fa-download"></i> 备份
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="showExportMenu()" title="导出Excel">
+                    <i class="fas fa-file-excel"></i> 导出
+                </button>
+            </div>
             <div class="user-info">
                 <i class="fas fa-user-circle"></i> CRA
             </div>
         </header>
 
         <!-- 页面内容 -->
-        <div class="page-content" id="pageContent">
-            <!-- 动态加载页面内容 -->
-        </div>
+        <div class="page-content" id="pageContent"></div>
+    </div>
+
+    <!-- 模态框 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modalContent"></div>
     </div>
 
     <!-- 加载动画 -->
@@ -53,6 +77,12 @@
         <div class="spinner"></div>
     </div>
 
-    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/projects.js"></script>
+    <script src="/static/js/tasks.js"></script>
+    <script src="/static/js/centers.js"></script>
+    <script src="/static/js/findings.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>
