@@ -104,6 +104,8 @@ window.api = {
             id: id, name: data.name || '', code: data.code || '',
             stage: data.stage || '', dbl_date: data.dbl_date || '',
             notes: data.notes || '', center_count: data.center_count || 0,
+            full_name: data.full_name || '', approval_number: data.approval_number || '',
+            sponsor: data.sponsor || '', cro_name: data.cro_name || '',
             created_at: _now(), updated_at: _now()
         });
         return { success: true, id: id };
@@ -111,7 +113,7 @@ window.api = {
 
     updateProject: async function(id, data) {
         var update = { updated_at: _now() };
-        ['name', 'code', 'stage', 'dbl_date', 'notes', 'center_count'].forEach(function(f) {
+        ['name', 'code', 'stage', 'dbl_date', 'notes', 'center_count', 'full_name', 'approval_number', 'sponsor', 'cro_name'].forEach(function(f) {
             if (f in data) update[f] = data[f];
         });
         await _update('projects', id, update);
@@ -658,8 +660,8 @@ window.api = {
         }
         var letters = await _select('ethics_letters', params);
         var [projects, centers, items] = await Promise.all([
-            _select('projects', { select: 'id,name,code' }),
-            _select('centers', { select: 'id,name,code' }),
+            _select('projects', { select: 'id,name,code,full_name' }),
+            _select('centers', { select: 'id,name,code,ethics_committee_name' }),
             _select('ethics_letter_items', { order: 'created_at.asc' })
         ]);
         var result = letters.map(function(l) {
@@ -669,8 +671,10 @@ window.api = {
             return Object.assign({}, l, {
                 project_name: p ? p.name : '',
                 project_code: p ? p.code : '',
+                project_full_name: p ? (p.full_name || p.name || '') : '',
                 center_name: c ? ((c.code || '') + ' ' + (c.name || '')).trim() : '',
                 center_code: c ? c.code : '',
+                ethics_committee: l.ethics_committee || (c ? (c.ethics_committee_name || '') : ''),
                 items: lItems
             });
         });
@@ -681,8 +685,8 @@ window.api = {
         var letter = await _selectOne('ethics_letters', id);
         if (!letter) return { success: false, error: '递交信不存在' };
         var [projects, centers, items] = await Promise.all([
-            _select('projects', { select: 'id,name,code,sponsor,cro_name' }),
-            _select('centers', { select: 'id,name,code,pi_name,pi_phone,contact_ethics' }),
+            _select('projects', { select: 'id,name,code,full_name,approval_number,sponsor,cro_name' }),
+            _select('centers', { select: 'id,name,code,pi_name,pi_phone,contact_ethics,ethics_committee_name' }),
             _select('ethics_letter_items', { letter_id: 'eq.' + id, order: 'created_at.asc' })
         ]);
         var p = projects.find(function(x) { return x.id === letter.project_id; });
@@ -692,6 +696,8 @@ window.api = {
             letter: Object.assign({}, letter, {
                 project_name: p ? p.name : '',
                 project_code: p ? p.code : '',
+                project_full_name: p ? (p.full_name || p.name || '') : '',
+                approval_number: p ? (p.approval_number || '') : '',
                 sponsor: p ? (p.sponsor || '') : '',
                 cro_name: p ? (p.cro_name || '') : '',
                 center_name: c ? c.name : '',
@@ -699,6 +705,7 @@ window.api = {
                 pi_name: c ? (c.pi_name || '') : '',
                 pi_phone: c ? (c.pi_phone || '') : '',
                 contact_ethics: c ? (c.contact_ethics || '') : '',
+                ethics_committee: c ? (c.ethics_committee_name || '') : (letter.ethics_committee || ''),
                 items: items
             })
         };
@@ -710,6 +717,7 @@ window.api = {
             id: id,
             project_id: data.project_id || '',
             center_id: data.center_id || '',
+            letter_type: data.letter_type || 'CRA_to_PI',
             submission_date: data.submission_date || '',
             submitter_name: data.submitter_name || '',
             submitter_phone: data.submitter_phone || '',
@@ -740,6 +748,7 @@ window.api = {
     updateEthicsLetter: async function(id, data) {
         await _update('ethics_letters', id, {
             project_id: data.project_id, center_id: data.center_id,
+            letter_type: data.letter_type || 'CRA_to_PI',
             submission_date: data.submission_date,
             submitter_name: data.submitter_name,
             submitter_phone: data.submitter_phone,
@@ -786,7 +795,7 @@ window.api = {
         return { success: true, templates: templates };
     },
 
-    uploadEthicsTemplate: async function(file, name, description) {
+    uploadEthicsTemplate: async function(file, name, description, letterType) {
         var id = _genId();
         var filePath = 'ethics-letters/' + id + '/' + encodeURIComponent(file.name);
         var uploadUrl = SB_URL + '/storage/v1/object/templates/' + filePath;
@@ -796,11 +805,13 @@ window.api = {
             body: file
         });
         if (!res.ok && res.status !== 409) throw new Error('Upload failed: ' + await res.text());
-        await _insert('ethics_templates', {
+        var insertData = {
             id: id, name: name || file.name, file_path: filePath,
             description: description || '', is_default: false,
             created_at: _now()
-        });
+        };
+        if (letterType) insertData.letter_type = letterType;
+        await _insert('ethics_templates', insertData);
         return { success: true, id: id };
     },
 

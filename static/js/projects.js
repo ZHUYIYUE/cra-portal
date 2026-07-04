@@ -251,8 +251,28 @@ window.showCreateProject = function() {
                 <input type="text" name="name" required placeholder="例：JMKX003142-H201" autofocus>
             </div>
             <div class="form-group">
-                <label>项目编号/简称</label>
-                <input type="text" name="code" placeholder="例：3142iv">
+                <label>项目全称</label>
+                <textarea name="full_name" rows="2" placeholder="例：一项评价注射用JMKX003142治疗心力衰竭引起的体液潴留有效性和安全性的多中心、随机、双盲、安慰剂对照的Ⅱ期临床试验" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;font-family:inherit;"></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>项目编号/简称</label>
+                    <input type="text" name="code" placeholder="例：3142iv">
+                </div>
+                <div class="form-group">
+                    <label>临床试验通知书编号</label>
+                    <input type="text" name="approval_number" placeholder="例：2024LP00163">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>申办方</label>
+                    <input type="text" name="sponsor" placeholder="例：浙江杭煜制药有限公司">
+                </div>
+                <div class="form-group">
+                    <label>CRO名称</label>
+                    <input type="text" name="cro_name" placeholder="例：上海济煜医药科技股份有限公司">
+                </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -290,7 +310,11 @@ window.submitCreateProject = async function(e) {
     const form = e.target;
     const data = {
         name: form.name.value,
+        full_name: form.full_name.value,
         code: form.code.value,
+        approval_number: form.approval_number.value,
+        sponsor: form.sponsor.value,
+        cro_name: form.cro_name.value,
         center_count: parseInt(form.center_count.value) || 0,
         stage: form.stage.value,
         dbl_date: form.dbl_date.value,
@@ -333,8 +357,28 @@ window.renderEditForm = function(p) {
                 <input type="text" name="name" required value="${window.escAttr(p.name)}">
             </div>
             <div class="form-group">
-                <label>项目编号/简称</label>
-                <input type="text" name="code" value="${window.escAttr(p.code || '')}">
+                <label>项目全称</label>
+                <textarea name="full_name" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;font-family:inherit;">${window.escAttr(p.full_name || '')}</textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>项目编号/简称</label>
+                    <input type="text" name="code" value="${window.escAttr(p.code || '')}">
+                </div>
+                <div class="form-group">
+                    <label>临床试验通知书编号</label>
+                    <input type="text" name="approval_number" value="${window.escAttr(p.approval_number || '')}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>申办方</label>
+                    <input type="text" name="sponsor" value="${window.escAttr(p.sponsor || '')}">
+                </div>
+                <div class="form-group">
+                    <label>CRO名称</label>
+                    <input type="text" name="cro_name" value="${window.escAttr(p.cro_name || '')}">
+                </div>
             </div>
             <div class="form-row">
                 <div class="form-group">
@@ -372,7 +416,11 @@ window.submitEditProject = async function(e, projectId) {
     const form = e.target;
     const data = {
         name: form.name.value,
+        full_name: form.full_name.value,
         code: form.code.value,
+        approval_number: form.approval_number.value,
+        sponsor: form.sponsor.value,
+        cro_name: form.cro_name.value,
         center_count: parseInt(form.center_count.value) || 0,
         stage: form.stage.value,
         dbl_date: form.dbl_date.value,
