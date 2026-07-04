@@ -414,27 +414,42 @@ window.renderEditForm = function(p) {
 window.submitEditProject = async function(e, projectId) {
     e.preventDefault();
     const form = e.target;
+    
+    // Disable save button to prevent double-click
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...'; }
+
     const data = {
         name: form.name.value,
-        full_name: form.full_name.value,
+        full_name: form.full_name ? form.full_name.value : '',
         code: form.code.value,
         approval_number: form.approval_number.value,
         sponsor: form.sponsor.value,
-        cro_name: form.cro_name.value,
+        cro_name: form.cro_name ? form.cro_name.value : '',
         center_count: parseInt(form.center_count.value) || 0,
         stage: form.stage.value,
         dbl_date: form.dbl_date.value,
         notes: form.notes.value
     };
+
+    console.log('[submitEditProject] data:', data);
     
-    const result = await api.updateProject(projectId, data);
-    
-    if (result.success) {
-        window.closeModal();
-        alert('✅ 保存成功！');
-        window.viewProject(projectId);
-    } else {
-        alert('❌ 保存失败：' + (result.error || '未知错误'));
+    try {
+        const result = await api.updateProject(projectId, data);
+        console.log('[submitEditProject] api result:', result);
+
+        if (result.success) {
+            window.closeModal();
+            alert('✅ 保存成功！');
+            window.viewProject(projectId);
+        } else {
+            alert('❌ 保存失败：' + (result.error || '未知错误'));
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> 保存'; }
+        }
+    } catch(err) {
+        console.error('[submitEditProject] error:', err);
+        alert('❌ 保存出错：' + err.message);
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> 保存'; }
     }
 };
 
