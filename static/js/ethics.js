@@ -205,7 +205,7 @@ window.openEthicsLetterForm = async function(editId) {
 window.onEthicsProjectChange = async function(selectedCenterId) {
     var projId = document.getElementById('el_project').value;
     if (!projId) return;
-    var centerData = await api.getCenters({ project_id: projId });
+    var centerData = await api.getCenters(projId);
     var centers = centerData.centers || [];
     var sel = document.getElementById('el_center');
     sel.innerHTML = '<option value="">请选择</option>' + centers.map(function(c) {
