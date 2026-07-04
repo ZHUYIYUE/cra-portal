@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="static/style.css">
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.6/dist/pizzip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.40.2/build/docxtemplater.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 </head>
 <body>
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
@@ -30,6 +33,9 @@
             </a>
             <a href="#" class="nav-item" data-page="findings">
                 <i class="fas fa-search"></i> 监查问题
+            </a>
+            <a href="#" class="nav-item" data-page="ethics">
+                <i class="fas fa-file-contract"></i> 伦理递交
             </a>
             <a href="#" class="nav-item" data-page="recommend">
                 <i class="fas fa-brain"></i> 状态推荐
@@ -77,6 +83,7 @@
     <script src="static/js/tasks.js"></script>
     <script src="static/js/centers.js"></script>
     <script src="static/js/findings.js"></script>
+    <script src="static/js/ethics.js"></script>
     <script src="static/app.js"></script>
 </body>
 </html>
