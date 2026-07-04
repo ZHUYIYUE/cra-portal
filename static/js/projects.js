@@ -315,12 +315,11 @@ window.submitCreateProject = async function(e) {
         approval_number: form.approval_number.value,
         sponsor: form.sponsor.value,
         cro_name: form.cro_name.value,
-        center_count: parseInt(form.center_count.value) || 0,
         stage: form.stage.value,
         dbl_date: form.dbl_date.value,
         notes: form.notes.value
     };
-    
+
     const result = await api.createProject(data);
     
     if (result.success) {
@@ -425,7 +424,6 @@ window.submitEditProject = async function(e, projectId) {
         approval_number: form.approval_number.value,
         sponsor: form.sponsor.value,
         cro_name: form.cro_name ? form.cro_name.value : '',
-        center_count: parseInt(form.center_count.value) || 0,
         stage: form.stage.value,
         dbl_date: form.dbl_date.value,
         notes: form.notes.value

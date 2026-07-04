@@ -103,7 +103,7 @@ window.api = {
         await _insert('projects', {
             id: id, name: data.name || '', code: data.code || '',
             stage: data.stage || '', dbl_date: data.dbl_date || '',
-            notes: data.notes || '', center_count: data.center_count || 0,
+            notes: data.notes || '',
             full_name: data.full_name || '', approval_number: data.approval_number || '',
             sponsor: data.sponsor || '', cro_name: data.cro_name || '',
             created_at: _now(), updated_at: _now()
@@ -113,7 +113,7 @@ window.api = {
 
     updateProject: async function(id, data) {
         var update = { updated_at: _now() };
-        ['name', 'code', 'stage', 'dbl_date', 'notes', 'center_count', 'full_name', 'approval_number', 'sponsor', 'cro_name'].forEach(function(f) {
+        ['name', 'code', 'stage', 'dbl_date', 'notes', 'full_name', 'approval_number', 'sponsor', 'cro_name'].forEach(function(f) {
             if (f in data) update[f] = data[f];
         });
         await _update('projects', id, update);
