@@ -104,6 +104,8 @@ window.api = {
             id: id, name: data.name || '', code: data.code || '',
             stage: data.stage || '', dbl_date: data.dbl_date || '',
             notes: data.notes || '', center_count: data.center_count || 0,
+            full_name: data.full_name || '', approval_number: data.approval_number || '',
+            sponsor: data.sponsor || '', cro_name: data.cro_name || '',
             created_at: _now(), updated_at: _now()
         });
         return { success: true, id: id };
@@ -111,7 +113,7 @@ window.api = {
 
     updateProject: async function(id, data) {
         var update = { updated_at: _now() };
-        ['name', 'code', 'stage', 'dbl_date', 'notes', 'center_count'].forEach(function(f) {
+        ['name', 'code', 'stage', 'dbl_date', 'notes', 'center_count', 'full_name', 'approval_number', 'sponsor', 'cro_name'].forEach(function(f) {
             if (f in data) update[f] = data[f];
         });
         await _update('projects', id, update);
@@ -646,6 +648,195 @@ window.api = {
             };
         }).filter(Boolean);
         return { success: true, stats: stats };
+    },
+
+    // ===== 伦理递交信批次 =====
+
+    getEthicsLetters: async function(filters) {
+        var params = { order: 'created_at.desc' };
+        if (filters) {
+            if (filters.project_id) params.project_id = 'eq.' + filters.project_id;
+            if (filters.center_id) params.center_id = 'eq.' + filters.center_id;
+        }
+        var letters = await _select('ethics_letters', params);
+        var [projects, centers, items] = await Promise.all([
+            _select('projects', { select: 'id,name,code,full_name' }),
+            _select('centers', { select: 'id,name,code,ethics_committee_name' }),
+            _select('ethics_letter_items', { order: 'created_at.asc' })
+        ]);
+        var result = letters.map(function(l) {
+            var p = projects.find(function(x) { return x.id === l.project_id; });
+            var c = centers.find(function(x) { return x.id === l.center_id; });
+            var lItems = items.filter(function(it) { return it.letter_id === l.id; });
+            return Object.assign({}, l, {
+                project_name: p ? p.name : '',
+                project_code: p ? p.code : '',
+                project_full_name: p ? (p.full_name || p.name || '') : '',
+                center_name: c ? ((c.code || '') + ' ' + (c.name || '')).trim() : '',
+                center_code: c ? c.code : '',
+                ethics_committee: l.ethics_committee || (c ? (c.ethics_committee_name || '') : ''),
+                items: lItems
+            });
+        });
+        return { success: true, letters: result };
+    },
+
+    getEthicsLetter: async function(id) {
+        var letter = await _selectOne('ethics_letters', id);
+        if (!letter) return { success: false, error: '递交信不存在' };
+        var [projects, centers, items] = await Promise.all([
+            _select('projects', { select: 'id,name,code,full_name,approval_number,sponsor,cro_name' }),
+            _select('centers', { select: 'id,name,code,pi_name,pi_phone,contact_ethics,ethics_committee_name' }),
+            _select('ethics_letter_items', { letter_id: 'eq.' + id, order: 'created_at.asc' })
+        ]);
+        var p = projects.find(function(x) { return x.id === letter.project_id; });
+        var c = centers.find(function(x) { return x.id === letter.center_id; });
+        return {
+            success: true,
+            letter: Object.assign({}, letter, {
+                project_name: p ? p.name : '',
+                project_code: p ? p.code : '',
+                project_full_name: p ? (p.full_name || p.name || '') : '',
+                approval_number: p ? (p.approval_number || '') : '',
+                sponsor: p ? (p.sponsor || '') : '',
+                cro_name: p ? (p.cro_name || '') : '',
+                center_name: c ? c.name : '',
+                center_code: c ? c.code : '',
+                pi_name: c ? (c.pi_name || '') : '',
+                pi_phone: c ? (c.pi_phone || '') : '',
+                contact_ethics: c ? (c.contact_ethics || '') : '',
+                ethics_committee: c ? (c.ethics_committee_name || '') : (letter.ethics_committee || ''),
+                items: items
+            })
+        };
+    },
+
+    createEthicsLetter: async function(data) {
+        var id = _genId();
+        await _insert('ethics_letters', {
+            id: id,
+            project_id: data.project_id || '',
+            center_id: data.center_id || '',
+            letter_type: data.letter_type || 'CRA_to_PI',
+            submission_date: data.submission_date || '',
+            submitter_name: data.submitter_name || '',
+            submitter_phone: data.submitter_phone || '',
+            submit_method: data.submit_method || '快递',
+            tracking_number: data.tracking_number || '',
+            ethics_committee: data.ethics_committee || '',
+            notes: data.notes || '',
+            created_at: _now(), updated_at: _now()
+        });
+        if (data.items && data.items.length) {
+            for (var i = 0; i < data.items.length; i++) {
+                var itemId = _genId();
+                await _insert('ethics_letter_items', {
+                    id: itemId, letter_id: id,
+                    doc_type: data.items[i].doc_type || '',
+                    doc_name: data.items[i].doc_name || '',
+                    version: data.items[i].version || '',
+                    version_date: data.items[i].version_date || '',
+                    copies: data.items[i].copies || 1,
+                    notes: data.items[i].notes || '',
+                    created_at: _now()
+                });
+            }
+        }
+        return { success: true, id: id };
+    },
+
+    updateEthicsLetter: async function(id, data) {
+        await _update('ethics_letters', id, {
+            project_id: data.project_id, center_id: data.center_id,
+            letter_type: data.letter_type || 'CRA_to_PI',
+            submission_date: data.submission_date,
+            submitter_name: data.submitter_name,
+            submitter_phone: data.submitter_phone,
+            submit_method: data.submit_method,
+            tracking_number: data.tracking_number,
+            ethics_committee: data.ethics_committee,
+            notes: data.notes,
+            updated_at: _now()
+        });
+        if (data.items) {
+            var existing = await _select('ethics_letter_items', { letter_id: 'eq.' + id });
+            for (var i = 0; i < existing.length; i++) {
+                await _delete('ethics_letter_items', existing[i].id);
+            }
+            for (var j = 0; j < data.items.length; j++) {
+                var itemId = _genId();
+                await _insert('ethics_letter_items', {
+                    id: itemId, letter_id: id,
+                    doc_type: data.items[j].doc_type || '',
+                    doc_name: data.items[j].doc_name || '',
+                    version: data.items[j].version || '',
+                    version_date: data.items[j].version_date || '',
+                    copies: data.items[j].copies || 1,
+                    notes: data.items[j].notes || '',
+                    created_at: _now()
+                });
+            }
+        }
+        return { success: true };
+    },
+
+    deleteEthicsLetter: async function(id) {
+        var items = await _select('ethics_letter_items', { letter_id: 'eq.' + id });
+        for (var i = 0; i < items.length; i++) {
+            await _delete('ethics_letter_items', items[i].id);
+        }
+        return _delete('ethics_letters', id);
+    },
+
+    // ===== 伦理模板管理 =====
+
+    getEthicsTemplates: async function() {
+        var templates = await _select('ethics_templates', { order: 'created_at.desc' });
+        return { success: true, templates: templates };
+    },
+
+    uploadEthicsTemplate: async function(file, name, description, letterType) {
+        var id = _genId();
+        var filePath = 'ethics-letters/' + id + '/' + encodeURIComponent(file.name);
+        var uploadUrl = SB_URL + '/storage/v1/object/templates/' + filePath;
+        var res = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: _headers({ 'Content-Type': file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+            body: file
+        });
+        if (!res.ok && res.status !== 409) throw new Error('Upload failed: ' + await res.text());
+        var insertData = {
+            id: id, name: name || file.name, file_path: filePath,
+            description: description || '', is_default: false,
+            created_at: _now()
+        };
+        if (letterType) insertData.letter_type = letterType;
+        await _insert('ethics_templates', insertData);
+        return { success: true, id: id };
+    },
+
+    deleteEthicsTemplate: async function(id) {
+        var tmpl = await _selectOne('ethics_templates', id);
+        if (tmpl) {
+            var delUrl = SB_URL + '/storage/v1/object/templates/' + tmpl.file_path;
+            await fetch(delUrl, { method: 'DELETE', headers: _headers() });
+        }
+        return _delete('ethics_templates', id);
+    },
+
+    setDefaultTemplate: async function(id) {
+        var templates = await _select('ethics_templates');
+        for (var i = 0; i < templates.length; i++) {
+            await _update('ethics_templates', templates[i].id, { is_default: templates[i].id === id });
+        }
+        return { success: true };
+    },
+
+    downloadTemplate: async function(filePath) {
+        var url = SB_URL + '/storage/v1/object/public/templates/' + filePath;
+        var res = await fetch(url);
+        if (!res.ok) throw new Error('下载模板失败: ' + res.status);
+        return await res.arrayBuffer();
     },
 
     // ===== 导出 Excel =====
