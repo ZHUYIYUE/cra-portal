@@ -26,22 +26,20 @@ window.loadCenterDetail = async function(content) {
         content.innerHTML = '<p style="color:#999;">未选择中心</p>';
         return;
     }
-    const [centerRes, staffRes, ethicsRes, pdsRes, tasksRes, findingsRes] = await Promise.all([
-        fetch(`/api/center/${centerId}`),
-        fetch(`/api/staff?center_id=${centerId}`),
-        fetch(`/api/ethics?center_id=${centerId}`),
-        fetch(`/api/pds?center_id=${centerId}`),
-        fetch(`/api/tasks?center_id=${centerId}`),
-        fetch(`/api/findings?center_id=${centerId}`)
+    const [centerData, staffData, ethicsData, pdsData, tasksData, findingsData] = await Promise.all([
+        api.getCenter(centerId),
+        api.getStaff(centerId),
+        api.getEthics(centerId),
+        api.getPDs(centerId),
+        api.getTasks({center_id: centerId}),
+        api.getFindings({center_id: centerId})
     ]);
-    const centerData = await centerRes.json();
-    const staff = (await staffRes.json()).staff || [];
-    const ethics = (await ethicsRes.json()).ethics || [];
-    const pds = (await pdsRes.json()).pds || [];
-    const centerTasks = (await tasksRes.json()).tasks || [];
-    const centerFindings = (await findingsRes.json()).findings || [];
-
     const center = centerData.center || {};
+    const staff = staffData.staff || [];
+    const ethics = ethicsData.ethics || [];
+    const pds = pdsData.pds || [];
+    const centerTasks = tasksData.tasks || [];
+    const centerFindings = findingsData.findings || [];
     const today = new Date().toISOString().split('T')[0];
 
     // 缓存数据，避免切换 Tab 重复请求
@@ -91,11 +89,11 @@ window.refreshCacheAndTab = async function(tabs) {
     const centerId = window.state ? window.state.currentCenterId : null;
     if (!centerId) return;
     const needs = [];
-    if (tabs.includes('staff')) needs.push(fetch(`/api/staff?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.staff = d.staff || []; }));
-    if (tabs.includes('ethics')) needs.push(fetch(`/api/ethics?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.ethics = d.ethics || []; }));
-    if (tabs.includes('pds')) needs.push(fetch(`/api/pds?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.pds = d.pds || []; }));
-    if (tabs.includes('tasks')) needs.push(fetch(`/api/tasks?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.centerTasks = d.tasks || []; }));
-    if (tabs.includes('findings')) needs.push(fetch(`/api/findings?center_id=${centerId}`).then(r => r.json()).then(d => { window._cdc.centerFindings = d.findings || []; }));
+    if (tabs.includes('staff')) needs.push(api.getStaff(centerId).then(function(d) { window._cdc.staff = d.staff || []; }));
+    if (tabs.includes('ethics')) needs.push(api.getEthics(centerId).then(function(d) { window._cdc.ethics = d.ethics || []; }));
+    if (tabs.includes('pds')) needs.push(api.getPDs(centerId).then(function(d) { window._cdc.pds = d.pds || []; }));
+    if (tabs.includes('tasks')) needs.push(api.getTasks({center_id: centerId}).then(function(d) { window._cdc.centerTasks = d.tasks || []; }));
+    if (tabs.includes('findings')) needs.push(api.getFindings({center_id: centerId}).then(function(d) { window._cdc.centerFindings = d.findings || []; }));
     await Promise.all(needs);
     window.refreshTabFromCache(window.state ? window.state.centerDetailTab : '概览');
 };
@@ -460,17 +458,13 @@ window.submitStaffForm = async function(e, editId) {
         license_collected: document.getElementById('s_license').checked,
         license_date: document.getElementById('s_license_date').value,
     };
-    const method = editId ? 'PUT' : 'POST';
-    const url = editId ? `/api/staff/${editId}` : '/api/staff';
-    const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = editId ? await api.updateStaff(editId, payload) : await api.createStaff(payload);
     if (data.success) { window.closeModal(); window.refreshCacheAndTab(['staff']); }
     else alert('保存失败');
 };
 
 window.editStaffMember = async function(staffId) {
-    const res = await fetch(`/api/staff/${staffId}`);
-    const data = await res.json();
+    const data = await api.getStaffMember(staffId);
     if (!data.success) { alert('加载失败'); return; }
     const s = data.staff;
     const roles = window.STAFF_ROLES.map(r => `<option value="${r}" ${s.role === r ? 'selected' : ''}>${r}</option>`).join('');
@@ -518,7 +512,7 @@ window.editStaffMember = async function(staffId) {
 
 window.deleteStaffMember = async function(staffId) {
     if (!confirm('确定删除该人员？')) return;
-    await fetch(`/api/staff/${staffId}`, { method: 'DELETE' });
+    await api.deleteStaff(staffId);
     window.refreshCacheAndTab(['staff']);
 };
 
@@ -580,17 +574,13 @@ window.submitEthicsForm = async function(e, editId) {
         review_date: document.getElementById('e_review_date').value,
         approval_date: document.getElementById('e_approval_date').value,
     };
-    const method = editId ? 'PUT' : 'POST';
-    const url = editId ? `/api/ethics/${editId}` : '/api/ethics';
-    const res = await fetch(url, { method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = editId ? await api.updateEthics(editId, payload) : await api.createEthics(payload);
     if (data.success) { window.closeModal(); window.refreshCacheAndTab(['ethics']); }
     else alert('保存失败');
 };
 
 window.editEthicsSubmission = async function(subId) {
-    const res = await fetch(`/api/ethics/${subId}`);
-    const data = await res.json();
+    const data = await api.getEthicsSubmission(subId);
     if (!data.success) { alert('加载失败'); return; }
     const e = data.ethics;
     const types = window.ETHICS_TYPES.map(t => `<option value="${t}" ${e.doc_type === t ? 'selected' : ''}>${t}</option>`).join('');
@@ -636,7 +626,7 @@ window.editEthicsSubmission = async function(subId) {
 
 window.deleteEthicsSubmission = async function(subId) {
     if (!confirm('确定删除该递交记录？')) return;
-    await fetch(`/api/ethics/${subId}`, { method: 'DELETE' });
+    await api.deleteEthics(subId);
     window.refreshCacheAndTab(['ethics']);
 };
 
@@ -690,15 +680,13 @@ window.submitPDFormNew = async function(e) {
         subject_ids: document.getElementById('pd_subject_ids').value.trim(),
         corrective_action: document.getElementById('pd_corrective_action').value.trim(),
     };
-    const res = await fetch('/api/pds', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = await api.createPD(payload);
     if (data.success) { window.closeModal(); window.refreshCacheAndTab(['pds']); }
     else alert('保存失败');
 };
 
 window.editProtocolDeviation = async function(pdId) {
-    const res = await fetch(`/api/pds/${pdId}`);
-    const data = await res.json();
+    const data = await api.getPD(pdId);
     if (!data.success) { alert('加载失败'); return; }
     const pd = data.pd;
     const severities = window.PD_SEVERITIES.map(s => `<option value="${s}" ${pd.severity === s ? 'selected' : ''}>${s}</option>`).join('');
@@ -756,15 +744,14 @@ window.submitPDFormEdit = async function(e, pdId) {
         corrective_action: document.getElementById('pd_corrective_action').value.trim(),
         status: statusRadio ? statusRadio.value : 'Open',
     };
-    const res = await fetch(`/api/pds/${pdId}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    const data = await res.json();
+    const data = await api.updatePD(pdId, payload);
     if (data.success) { window.closeModal(); window.refreshCacheAndTab(['pds']); }
     else alert('保存失败');
 };
 
 window.deleteProtocolDeviation = async function(pdId) {
     if (!confirm('确定删除该方案偏离记录？')) return;
-    await fetch(`/api/pds/${pdId}`, { method: 'DELETE' });
+    await api.deletePD(pdId);
     window.refreshCacheAndTab(['pds']);
 };
 
@@ -772,8 +759,7 @@ window.deleteProtocolDeviation = async function(pdId) {
 
 window.editCenterInfo = async function(centerId) {
     try {
-        const res = await fetch(`/api/center/${centerId}`);
-        const data = await res.json();
+        const data = await api.getCenter(centerId);
         if (!data.success) { alert('加载失败'); return; }
         const c = data.center;
         
@@ -843,12 +829,7 @@ window.submitCenterInfo = async function(e, centerId) {
     };
     
     try {
-        const res = await fetch(`/api/center/${centerId}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        const result = await res.json();
+        const result = await api.updateCenter(centerId, data);
         if (result.success) {
             window.closeModal();
             alert('✅ 保存成功');

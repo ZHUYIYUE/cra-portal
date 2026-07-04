@@ -3,14 +3,13 @@
 // ========== 待办事项页面 ==========
 
 window.loadTasks = async function(content) {
-    const res = await fetch('/api/tasks');
-    const data = await res.json();
+    const data = await api.getTasks();
     if (window.state) {
         window.state.tasks = data.tasks || [];
     }
-    
+
     if (!window.state || window.state.projects.length === 0) {
-        const projData = await (await fetch('/api/projects')).json();
+        const projData = await api.getProjects();
         if (window.state) {
             window.state.projects = projData.projects || [];
         }
@@ -115,11 +114,9 @@ window.filterTasks = function(btn, filter) {
 // ========== 状态推荐页面 ==========
 
 window.loadRecommend = async function(content) {
-    const [statusRes, recRes] = await Promise.all([
-        fetch('/api/status'), fetch('/api/recommendations')
+    const [statusData, recData] = await Promise.all([
+        api.getStatus(), api.getRecommendations()
     ]);
-    const statusData = await statusRes.json();
-    const recData = await recRes.json();
     
     const currentEnergy = statusData.energy || 'medium';
     const currentCalmness = statusData.calmness || 'medium';
@@ -239,20 +236,12 @@ window.renderRecTask = function(t, recommended) {
 };
 
 window.selectEnergy = async function(level) {
-    await fetch('/api/status', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({energy: level})
-    });
+    await api.saveStatus({energy: level});
     window.navigateTo('recommend');
 };
 
 window.selectCalmness = async function(level) {
-    await fetch('/api/status', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({calmness: level})
-    });
+    await api.saveStatus({calmness: level});
     window.navigateTo('recommend');
 };
 
@@ -340,8 +329,7 @@ window.onTaskProjectChange = async function(projectId) {
     select.disabled = true;
     select.innerHTML = '<option value="">加载中...</option>';
     try {
-        const res = await fetch(`/api/centers?project_id=${projectId}`);
-        const data = await res.json();
+        const data = await api.getCenters(projectId);
         const centers = data.centers || [];
         if (centers.length === 0) {
             select.innerHTML = '<option value="">该项目暂无中心</option>';
@@ -370,12 +358,7 @@ window.submitCreateTask = async function(e) {
         done: taskStatus === 'done'
     };
     
-    const res = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(data)
-    });
-    const result = await res.json();
+    const result = await api.createTask(data);
     
     if (result.success) {
         window.closeModal();
@@ -393,12 +376,7 @@ window.submitCreateTask = async function(e) {
 // ========== 切换任务完成状态 ==========
 
 window.toggleTaskDone = async function(taskId, newDone) {
-    const res = await fetch(`/api/task/${taskId}`, {
-        method: 'PUT',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({done: newDone, task_status: newDone ? 'done' : 'pending'})
-    });
-    const result = await res.json();
+    const result = await api.updateTask(taskId, {done: newDone, task_status: newDone ? 'done' : 'pending'});
     
     if (result.success) {
         const el = document.getElementById(`task-${taskId}`);
@@ -418,8 +396,7 @@ window.toggleTaskDone = async function(taskId, newDone) {
 
 window.deleteTaskById = async function(taskId) {
     if (!confirm('确定删除此待办？')) return;
-    const res = await fetch(`/api/task/${taskId}`, {method: 'DELETE'});
-    const result = await res.json();
+    const result = await api.deleteTask(taskId);
     if (result.success) {
         await window.loadTasks();
     } else {
@@ -513,10 +490,9 @@ window.loadCentersForEdit = async function(projectId, selectedCenterId) {
     }
     
     try {
-        const res = await fetch(`/api/centers?project_id=${projectId}`);
-        const data = await res.json();
+        const data = await api.getCenters(projectId);
         const centers = data.centers || [];
-        
+
         select.innerHTML = '<option value="">不关联中心</option>' +
             centers.map(c => `<option value="${c.id}" ${c.id === selectedCenterId ? 'selected' : ''}>${window.escHtml(c.name)}</option>`).join('');
     } catch(e) {
@@ -548,12 +524,7 @@ window.submitUpdateTask = async function(e, taskId) {
     };
     
     try {
-        const res = await fetch(`/api/task/${taskId}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-        const result = await res.json();
+        const result = await api.updateTask(taskId, payload);
         
         if (result.success) {
             window.closeModal();
@@ -598,16 +569,12 @@ window.viewTaskDetail = function(taskId) {
 // ========== 启动任务页面 ==========
 
 window.loadStartup = async function(content) {
-    const [tasksRes, logsRes, statsRes, allTasksRes] = await Promise.all([
-        fetch('/api/startup-tasks'),
-        fetch('/api/startup-logs'),
-        fetch('/api/startup-stats'),
-        fetch('/api/tasks')
+    const [tasksData, logsData, statsData, allTasksData] = await Promise.all([
+        api.getStartupTasks(),
+        api.getStartupLogs(),
+        api.getStartupStats(),
+        api.getTasks()
     ]);
-    const tasksData = await tasksRes.json();
-    const logsData = await logsRes.json();
-    const statsData = await statsRes.json();
-    const allTasksData = await allTasksRes.json();
     
     const startupTasks = tasksData.tasks || [];
     const logs = logsData.logs || [];
@@ -734,12 +701,7 @@ window.saveStartupTask = async function() {
     }
     
     try {
-        const res = await fetch('/api/startup-tasks', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, description})
-        });
-        const data = await res.json();
+        const data = await api.createStartupTask({name, description});
         if (data.success) {
             window.closeModal();
             window.navigateTo('startup');
@@ -755,8 +717,7 @@ window.deleteStartupTask = async function(taskId) {
     if (!confirm('确定删除这个启动任务吗？')) return;
     
     try {
-        const res = await fetch(`/api/startup-tasks/${taskId}`, {method: 'DELETE'});
-        const data = await res.json();
+        const data = await api.deleteStartupTask(taskId);
         if (data.success) {
             window.navigateTo('startup');
         }
@@ -767,8 +728,7 @@ window.deleteStartupTask = async function(taskId) {
 
 window.executeStartupTask = async function(taskId, taskName) {
     // 获取当前待办任务列表用于选择目标任务
-    const res = await fetch('/api/tasks');
-    const data = await res.json();
+    const data = await api.getTasks();
     const pendingTasks = (data.tasks || []).filter(t => !t.done);
     
     window.openModal(`
@@ -829,21 +789,16 @@ window.saveStartupLog = async function(startupTaskId, startupTaskName) {
     const notes = document.getElementById('logNotes').value.trim();
     
     try {
-        const res = await fetch('/api/startup-logs', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                startup_task_id: startupTaskId,
-                startup_task_name: startupTaskName,
-                target_task_id: targetTaskId,
-                target_task_name: targetTaskName,
-                calmness_before: calmnessBefore,
-                calmness_after: calmnessAfter,
-                duration_minutes: durationMinutes,
-                notes
-            })
+        const data = await api.createStartupLog({
+            startup_task_id: startupTaskId,
+            startup_task_name: startupTaskName,
+            target_task_id: targetTaskId,
+            target_task_name: targetTaskName,
+            calmness_before: calmnessBefore,
+            calmness_after: calmnessAfter,
+            duration_minutes: durationMinutes,
+            notes
         });
-        const data = await res.json();
         if (data.success) {
             window.closeModal();
             window.navigateTo('startup');

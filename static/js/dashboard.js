@@ -4,19 +4,16 @@
 let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
-    const [statsRes, projectsRes, centersRes] = await Promise.all([
-        fetch('/api/stats'), fetch('/api/projects'), fetch('/api/centers')
+    const [statsData, projData, centersData] = await Promise.all([
+        api.getStats(), api.getProjects(), api.getCenters()
     ]);
-    const stats = await statsRes.json();
-    const projData = await projectsRes.json();
-    const centersData = await centersRes.json();
     
     if (window.state) {
         window.state.projects = projData.projects || [];
     }
     const centers = centersData.centers || [];
     
-    const s = stats.stats || {};
+    const s = statsData.stats || {};
     const centerProgress = s.center_progress || [];
     
     content.innerHTML = `
@@ -110,8 +107,7 @@ window.loadDashboard = async function(content) {
 
 window.renderCal = async function() {
     // 获取所有未完成任务
-    const res = await fetch('/api/tasks');
-    const data = await res.json();
+    const data = await api.getTasks();
     const tasks = (data.tasks || []).filter(t => !t.done && t.due_date);
     
     const today = new Date();
@@ -173,7 +169,7 @@ window.showDayTasks = function(dateStr) {
         return;
     }
     
-    fetch('/api/tasks').then(r => r.json()).then(data => {
+    api.getTasks().then(function(data) {
         const tasks = (data.tasks || []).filter(t => t.due_date === dateStr);
         popup.dataset.date = dateStr;
         

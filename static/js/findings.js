@@ -1,16 +1,13 @@
 // ========== 监查问题页面 ==========
 
 window.loadFindings = async function(content) {
-    const [res, projRes, centerRes, statsRes] = await Promise.all([
-        fetch('/api/findings'),
-        fetch('/api/projects'),
-        fetch('/api/centers'),
-        fetch('/api/findings-stats')
+    const [findingsData, projData, centersData, statsData] = await Promise.all([
+        api.getFindings(), api.getProjects(), api.getCenters(), api.getFindingsStats()
     ]);
-    const findings = (await res.json()).findings || [];
-    const projects = (await projRes.json()).projects || [];
-    const centers = (await centerRes.json()).centers || [];
-    const stats = (await statsRes.json()).stats || {};
+    const findings = findingsData.findings || [];
+    const projects = projData.projects || [];
+    const centers = centersData.centers || [];
+    const stats = statsData.stats || {};
 
     const categories = ['必备文件', '试验流程', '中心流程', '知情同意', '随机化/盲法', '数据记录', '药物管理', '其他'];
     const severities = ['Minor', 'Major', 'Critical'];
@@ -350,10 +347,12 @@ window.submitFindingForm = async function(e, editId) {
         alert('请填写必填项'); return;
     }
     try {
-        const url = editId ? `/api/finding/${editId}` : '/api/findings';
-        const method = editId ? 'PUT' : 'POST';
-        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const data = await res.json();
+        let data;
+        if (editId) {
+            data = await api.updateFinding(editId, payload);
+        } else {
+            data = await api.createFinding(payload);
+        }
         if (data.success) {
             window.closeModal();
             window.navigateTo('findings');
@@ -368,8 +367,7 @@ window.submitFindingForm = async function(e, editId) {
 window.deleteFinding = async function(id) {
     if (!confirm('确定删除这条问题记录？')) return;
     try {
-        const res = await fetch(`/api/finding/${id}`, { method: 'DELETE' });
-        const data = await res.json();
+        const data = await api.deleteFinding(id);
         if (data.success) window.navigateTo('findings');
     } catch (e) {
         alert('删除失败');

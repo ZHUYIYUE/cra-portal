@@ -174,28 +174,9 @@ window.closeExportModal = function(e) {
 window.exportExcel = async function(type) {
     window.closeExportModal();
     try {
-        var res = await fetch(`/api/export/${type}`);
-        if (!res.ok) {
-            var err = await res.json().catch(function() { return {error: '导出失败'}; });
-            throw new Error(err.error || '导出失败');
-        }
-        var blob = await res.blob();
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        var disposition = res.headers.get('Content-Disposition');
-        var filename = `cra-portal-${type}.xlsx`;
-        if (disposition) {
-            var match = disposition.match(/filename=(.+)/);
-            if (match) filename = match[1].replace(/"/g, '');
-        }
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        await api.exportExcel(type);
     } catch (err) {
-        alert('❌ 导出失败: ' + err.message);
+        alert('导出失败: ' + err.message);
     }
 };
 
@@ -204,25 +185,9 @@ window.exportExcel = async function(type) {
 window.backupData = async function() {
     if (!confirm('确定导出数据备份？备份文件将自动下载。')) return;
     try {
-        var res = await fetch('/api/backup');
-        if (!res.ok) throw new Error('备份失败');
-        var blob = await res.blob();
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        var disposition = res.headers.get('Content-Disposition');
-        var filename = 'cra-portal-backup.json';
-        if (disposition) {
-            var match = disposition.match(/filename=(.+)/);
-            if (match) filename = match[1].replace(/"/g, '');
-        }
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        alert('✅ 备份成功！文件已下载。');
+        await api.backup();
+        alert('备份成功！文件已下载。');
     } catch (err) {
-        alert('❌ 备份失败: ' + err.message);
+        alert('备份失败: ' + err.message);
     }
 };

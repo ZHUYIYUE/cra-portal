@@ -4,8 +4,7 @@ window.loadProjects = async function(content) {
     content.innerHTML = `<div class="card"><div class="card-header"><i class="fas fa-folder-open"></i> 项目管理</div></div><p style="color:#999;text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>`;
     
     try {
-        const res = await fetch('/api/projects');
-        const data = await res.json();
+        const data = await api.getProjects();
         if (window.state) {
             window.state.projects = data.projects || [];
         }
@@ -46,8 +45,7 @@ window.loadProjects = async function(content) {
 };
 
 window.viewProject = async function(projectId) {
-    const res = await fetch(`/api/project/${projectId}`);
-    const data = await res.json();
+    const data = await api.getProject(projectId);
     if (!data.success) { alert('加载失败'); return; }
     
     if (window.state) {
@@ -100,8 +98,7 @@ window.viewProject = async function(projectId) {
 
 window.loadProjectCenters = async function(projectId) {
     try {
-        const res = await fetch(`/api/centers?project_id=${projectId}`);
-        const data = await res.json();
+        const data = await api.getCenters(projectId);
         if (data.success) {
             const el = document.getElementById('projectCenters');
             if (el) el.dataset.projectId = projectId;
@@ -206,12 +203,7 @@ window.toggleCenterDetail = function(centerId) {
 
 window.toggleMilestone = async function(centerId, idx, done) {
     try {
-        const res = await fetch(`/api/center/${centerId}/milestone/${idx}`, {
-            method: 'PUT',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({done: done})
-        });
-        const data = await res.json();
+        const data = await api.updateMilestone(centerId, idx, {done: done});
         if (data.success) {
             const currentProjectId = document.getElementById('projectCenters')?.dataset?.projectId;
             if (currentProjectId) window.loadProjectCenters(currentProjectId);
@@ -227,11 +219,7 @@ window.showAddCenterModal = function(projectId) {
     const name = prompt('中心名称:');
     if (!name) return;
     
-    fetch('/api/centers', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({project_id: projectId, code: code, name: name})
-    }).then(r => r.json()).then(data => {
+    api.createCenter({project_id: projectId, code: code, name: name}).then(function(data) {
         if (data.success) {
             window.showToast('中心添加成功');
             window.loadProjectCenters(projectId);
@@ -242,8 +230,7 @@ window.showAddCenterModal = function(projectId) {
 window.deleteCenter = async function(centerId, projectId) {
     if (!confirm('确定删除该中心？')) return;
     try {
-        const res = await fetch(`/api/center/${centerId}`, {method: 'DELETE'});
-        const data = await res.json();
+        const data = await api.deleteCenter(centerId);
         if (data.success) {
             window.showToast('已删除');
             window.loadProjectCenters(projectId);
@@ -310,12 +297,7 @@ window.submitCreateProject = async function(e) {
         notes: form.notes.value
     };
     
-    const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(data)
-    });
-    const result = await res.json();
+    const result = await api.createProject(data);
     
     if (result.success) {
         window.closeModal();
@@ -331,7 +313,7 @@ window.submitCreateProject = async function(e) {
 window.showEditProject = function(projectId) {
     const p = window.state && window.state.currentProject;
     if (!p || p.id !== projectId) {
-        fetch(`/api/project/${projectId}`).then(r=>r.json()).then(d=>{
+        api.getProject(projectId).then(function(d) {
             if (window.state) {
                 window.state.currentProject = d;
             }
@@ -397,12 +379,7 @@ window.submitEditProject = async function(e, projectId) {
         notes: form.notes.value
     };
     
-    const res = await fetch(`/api/project/${projectId}`, {
-        method: 'PUT',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(data)
-    });
-    const result = await res.json();
+    const result = await api.updateProject(projectId, data);
     
     if (result.success) {
         window.closeModal();
@@ -417,7 +394,7 @@ window.submitEditProject = async function(e, projectId) {
 
 window.confirmDeleteProject = function(id, name) {
     if (confirm(`确定要删除项目「${name}」吗？\n关联的待办事项也会被删除，此操作不可恢复。`)) {
-        fetch(`/api/project/${id}`, {method:'DELETE'}).then(r=>r.json()).then(result=>{
+        api.deleteProject(id).then(function(result) {
             if (result.success) {
                 alert('✅ 已删除');
                 window.navigateTo('projects');
@@ -434,8 +411,7 @@ window.loadProjectTasks = async function(projectId) {
     const container = document.getElementById('projectTasks');
     if (!container) return;
     
-    const res = await fetch(`/api/tasks?project_id=${projectId}`);
-    const data = await res.json();
+    const data = await api.getTasks({project_id: projectId});
     const tasks = data.tasks || [];
     
     if (tasks.length === 0) {
