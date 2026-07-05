@@ -246,6 +246,8 @@ body {
 }
 .btn-primary { background: #3498db; color: white; }
 .btn-primary:hover { background: #2980b9; }
+.btn-outline { background: white; color: #3498db; border: 1px solid #cfe1f2; }
+.btn-outline:hover { background: #eef6fd; border-color: #9fc7ea; }
 .btn-success { background: #28a745; color: white; }
 .btn-success:hover { background: #218838; }
 .btn-text { background: transparent; color: #666; padding: 6px 12px; }
@@ -1066,3 +1068,163 @@ body {
 .cal-task-med  { border-left: 3px solid #ff9800; }
 .cal-task-low  { border-left: 3px solid #27ae60; }
 .cal-task-done { text-decoration: line-through; color: #999; }
+
+/* ====== 今日工作台 ====== */
+.workbench-shell {
+    background: #fff;
+    border: 1px solid #e5eaf0;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(20, 40, 70, 0.06);
+}
+.workbench-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+.workbench-head h2 {
+    margin: 0;
+    font-size: 1.35em;
+    color: #203040;
+}
+.workbench-head p {
+    margin: 4px 0 0;
+    color: #6b7785;
+    font-size: 0.92em;
+}
+.workbench-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.workbench-metrics {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(110px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.wb-metric {
+    background: #f8fafc;
+    border: 1px solid #e6ebf1;
+    border-radius: 8px;
+    padding: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .2s, background .2s, transform .15s;
+    font-family: inherit;
+}
+.wb-metric:hover {
+    background: #f2f7fb;
+    border-color: #c8d8e8;
+    transform: translateY(-1px);
+}
+.wb-metric strong {
+    display: block;
+    color: #203040;
+    font-size: 1.5em;
+    line-height: 1;
+}
+.wb-metric span {
+    display: block;
+    color: #6b7785;
+    font-size: 0.82em;
+    margin-top: 6px;
+}
+.wb-metric.warning { background: #fff8e8; border-color: #f2d28b; }
+.wb-metric.danger { background: #fff1f1; border-color: #efb4b4; }
+.wb-metric.warning strong { color: #b06a00; }
+.wb-metric.danger strong { color: #c33a32; }
+.workbench-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+.workbench-panel {
+    border: 1px solid #e8edf3;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fbfcfe;
+    min-width: 0;
+}
+.wb-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #f3f6fa;
+    color: #34495e;
+    font-weight: 700;
+    font-size: 0.9em;
+}
+.wb-list-row {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid #edf1f5;
+    background: transparent;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    color: inherit;
+}
+.wb-list-row:hover { background: #fff; }
+.wb-row-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.wb-row-main strong {
+    color: #243445;
+    font-size: 0.9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.wb-row-main small {
+    color: #7b8794;
+    font-size: 0.78em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.wb-chip {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #eef3f8;
+    color: #4b6075;
+    font-size: 0.76em;
+    padding: 3px 8px;
+    white-space: nowrap;
+}
+.wb-chip.warning { background: #fff0c2; color: #8a5a00; }
+.wb-chip.danger { background: #ffe0df; color: #b82f2b; }
+.wb-empty {
+    padding: 18px 12px;
+    color: #8a97a6;
+    font-size: 0.88em;
+}
+@media (max-width: 1200px) {
+    .workbench-metrics { grid-template-columns: repeat(3, 1fr); }
+    .workbench-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+    .workbench-head { flex-direction: column; }
+    .workbench-actions { justify-content: flex-start; }
+    .workbench-metrics { grid-template-columns: repeat(2, 1fr); }
+    .workbench-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+    .workbench-metrics { grid-template-columns: 1fr; }
+}

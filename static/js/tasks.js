@@ -3,6 +3,9 @@
 // ========== 待办事项页面 ==========
 
 window.loadTasks = async function(content) {
+    content = content || document.getElementById('pageContent');
+    if (!content) return;
+
     const data = await api.getTasks();
     if (window.state) {
         window.state.tasks = data.tasks || [];
@@ -15,10 +18,16 @@ window.loadTasks = async function(content) {
         }
     }
     
-    const total = window.state ? window.state.tasks.length : 0;
-    const done = window.state ? window.state.tasks.filter(t => t.done).length : 0;
+    const tasks = window.state ? window.state.tasks : [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const total = tasks.length;
+    const done = tasks.filter(t => t.done).length;
     const pending = total - done;
-    const waiting_crc = window.state ? window.state.tasks.filter(t => t.task_status === 'waiting_crc' && !t.done).length : 0;
+    const overdue = tasks.filter(t => !t.done && t.due_date && t.due_date < todayStr).length;
+    const dueToday = tasks.filter(t => !t.done && t.due_date === todayStr).length;
+    const dueWeek = tasks.filter(t => !t.done && t.due_date && t.due_date >= todayStr && t.due_date <= weekStr).length;
+    const waiting_crc = tasks.filter(t => t.task_status === 'waiting_crc' && !t.done).length;
     
     // 按能力类型分组统计
     const abilityGroups = {};
@@ -54,10 +63,13 @@ window.loadTasks = async function(content) {
 
         <!-- 筛选栏 -->
         <div class="filter-bar">
-            <button class="filter-btn active" onclick="window.filterTasks(this, 'all')">全部 (${total})</button>
-            <button class="filter-btn" onclick="window.filterTasks(this, 'pending')">待完成 (${pending})</button>
-            ${waiting_crc > 0 ? `<button class="filter-btn" onclick="window.filterTasks(this, 'waiting_crc')" style="color:#e67e22;font-weight:bold;">跟进CRC (${waiting_crc})</button>` : `<button class="filter-btn" onclick="window.filterTasks(this, 'waiting_crc')">跟进CRC (0)</button>`}
-            <button class="filter-btn" onclick="window.filterTasks(this, 'done')">已完成 (${done})</button>
+            <button class="filter-btn active" data-filter="all" onclick="window.filterTasks(this, 'all')">全部 (${total})</button>
+            <button class="filter-btn" data-filter="pending" onclick="window.filterTasks(this, 'pending')">待完成 (${pending})</button>
+            <button class="filter-btn" data-filter="overdue" onclick="window.filterTasks(this, 'overdue')">逾期 (${overdue})</button>
+            <button class="filter-btn" data-filter="today" onclick="window.filterTasks(this, 'today')">今日 (${dueToday})</button>
+            <button class="filter-btn" data-filter="due_week" onclick="window.filterTasks(this, 'due_week')">本周 (${dueWeek})</button>
+            ${waiting_crc > 0 ? `<button class="filter-btn" data-filter="waiting_crc" onclick="window.filterTasks(this, 'waiting_crc')" style="color:#e67e22;font-weight:bold;">跟进CRC (${waiting_crc})</button>` : `<button class="filter-btn" data-filter="waiting_crc" onclick="window.filterTasks(this, 'waiting_crc')">跟进CRC (0)</button>`}
+            <button class="filter-btn" data-filter="done" onclick="window.filterTasks(this, 'done')">已完成 (${done})</button>
         </div>
 
         <div class="task-list" id="taskList">
@@ -67,7 +79,7 @@ window.loadTasks = async function(content) {
                     const taskStatus = t.task_status || 'pending';
                     const isWaitingCrc = taskStatus === 'waiting_crc' && !t.done;
                     return `
-                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-status="${taskStatus}" data-ability="${t.ability_type || 'execution'}">
+                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-status="${taskStatus}" data-ability="${t.ability_type || 'execution'}" data-due="${t.due_date || ''}">
                             <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="window.toggleTaskDone('${t.id}', ${!t.done})">
                             <div class="task-content" onclick="window.viewTaskDetail('${t.id}')">
                                 <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${window.escHtml(t.title)}</h4>
@@ -104,15 +116,25 @@ window.filterTasks = function(btn, filter) {
     document.querySelectorAll('#taskList .task-item').forEach(item => {
         const done = item.dataset.done === 'true';
         const status = item.dataset.status || 'pending';
+        const due = item.dataset.due || '';
+        const todayStr = new Date().toISOString().split('T')[0];
+        const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
         if (filter === 'all') item.style.display = '';
         else if (filter === 'pending') item.style.display = (done || status === 'waiting_crc') ? 'none' : '';
+        else if (filter === 'overdue') item.style.display = (!done && due && due < todayStr) ? '' : 'none';
+        else if (filter === 'today') item.style.display = (!done && due === todayStr) ? '' : 'none';
+        else if (filter === 'due_week') item.style.display = (!done && due && due >= todayStr && due <= weekStr) ? '' : 'none';
         else if (filter === 'waiting_crc') item.style.display = status === 'waiting_crc' && !done ? '' : 'none';
         else if (filter === 'done') item.style.display = done ? '' : 'none';
     });
 };
 
-// ========== 状态推荐页面 ==========
+window.applyTaskFilter = function(filter) {
+    const btn = document.querySelector(`.filter-btn[data-filter="${filter}"]`);
+    if (btn) window.filterTasks(btn, filter);
+};
 
+// ========== 状态推荐页面 ==========
 window.loadRecommend = async function(content) {
     const [statusData, recData] = await Promise.all([
         api.getStatus(), api.getRecommendations()
@@ -379,10 +401,13 @@ window.toggleTaskDone = async function(taskId, newDone) {
     const result = await api.updateTask(taskId, {done: newDone, task_status: newDone ? 'done' : 'pending'});
     
     if (result.success) {
-        const el = document.getElementById(`task-${taskId}`);
+        const el = document.getElementById(`task-${taskId}`) || document.querySelector(`[data-task-id="${taskId}"]`);
         if (el) {
             el.classList.toggle('task-done', newDone);
             el.dataset.done = newDone;
+            el.dataset.status = newDone ? 'done' : 'pending';
+            const checkbox = el.querySelector('.task-checkbox');
+            if (checkbox) checkbox.checked = newDone;
             const h4 = el.querySelector('h4');
             if (h4) {
                 h4.style.textDecoration = newDone ? 'line-through' : '';
@@ -398,7 +423,12 @@ window.deleteTaskById = async function(taskId) {
     if (!confirm('确定删除此待办？')) return;
     const result = await api.deleteTask(taskId);
     if (result.success) {
-        await window.loadTasks();
+        const content = document.getElementById('pageContent');
+        if (window.state && window.state.currentPage === 'tasks' && content) {
+            await window.loadTasks(content);
+        } else if (window.state && window.state.currentProject) {
+            await window.loadProjectTasks(window.state.currentProject.id);
+        }
     } else {
         alert('❌ 删除失败: ' + (result.error || '未知错误'));
     }
@@ -531,7 +561,7 @@ window.submitUpdateTask = async function(e, taskId) {
             window.showToast('✅ 已保存');
             // 重新加载当前页面任务列表
             if (window.state && window.state.currentPage === 'tasks') {
-                const content = document.getElementById('content');
+                const content = document.getElementById('pageContent');
                 if (content) await window.loadTasks(content);
             } else if (window.state && window.state.currentProject) {
                 await window.loadProjectTasks(window.state.currentProject.id);
