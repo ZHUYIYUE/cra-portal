@@ -118,7 +118,7 @@ window.renderFindingsList = function() {
     container.innerHTML = filtered.map(f => {
         const isOverdue = f.due_date && f.due_date < today && !['Resolved', 'Closed'].includes(f.status);
         return `
-        <div class="finding-card" style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:14px 16px;margin-bottom:10px;${isOverdue ? 'border-left:4px solid #f44336;' : ''}">
+        <div class="finding-card" data-finding-id="${f.id}" style="background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:14px 16px;margin-bottom:10px;${isOverdue ? 'border-left:4px solid #f44336;' : ''}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
                 <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                     <span style="font-weight:700;color:#333;font-size:14px;">${window.escHtml(f.finding_number || '')}</span>

@@ -52,6 +52,8 @@ window.initApp = function() {
         });
     });
 
+    window.initGlobalSearch();
+
     var modalOverlay = document.getElementById('modalOverlay');
     if (modalOverlay) {
         modalOverlay.addEventListener('click', function(e) {
@@ -99,6 +101,175 @@ window.loadPage = async function(page) {
     }
 };
 
+
+// ========== 全局搜索 ==========
+
+window.initGlobalSearch = function() {
+    var input = document.getElementById('globalSearchInput');
+    var clearBtn = document.getElementById('globalSearchClear');
+    var box = document.getElementById('globalSearchResults');
+    if (!input || !box) return;
+
+    var timer = null;
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(function() { window.runGlobalSearch(input.value); }, 160);
+    });
+    input.addEventListener('focus', function() {
+        if (input.value.trim()) window.runGlobalSearch(input.value);
+    });
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') window.closeGlobalSearch();
+        if (e.key === 'Enter' && window._globalSearchResults && window._globalSearchResults.length) {
+            e.preventDefault();
+            window.openGlobalSearchResult(0);
+        }
+    });
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            input.value = '';
+            window.closeGlobalSearch();
+            input.focus();
+        });
+    }
+    document.addEventListener('click', function(e) {
+        var wrap = document.getElementById('globalSearch');
+        if (wrap && !wrap.contains(e.target)) window.closeGlobalSearch();
+    });
+};
+
+window.closeGlobalSearch = function() {
+    var box = document.getElementById('globalSearchResults');
+    if (box) {
+        box.classList.remove('show');
+        box.innerHTML = '';
+    }
+};
+
+window.loadGlobalSearchIndex = async function(force) {
+    if (!force && window._globalSearchIndex) return window._globalSearchIndex;
+    var [projData, centerData, taskData, findingData, letterData] = await Promise.all([
+        api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters()
+    ]);
+    var entries = [];
+    var add = function(entry) {
+        entry.searchText = [entry.title, entry.meta, entry.extra].filter(Boolean).join(' ').toLowerCase();
+        entries.push(entry);
+    };
+
+    (projData.projects || []).forEach(function(p) {
+        add({ type: 'project', icon: 'fa-folder-open', label: '项目', id: p.id,
+            title: p.name || '未命名项目', meta: [p.code, p.stage, p.full_name].filter(Boolean).join(' · '), extra: p.notes || '' });
+    });
+    (centerData.centers || []).forEach(function(c) {
+        add({ type: 'center', icon: 'fa-hospital', label: '中心', id: c.id,
+            title: ((c.code || '') + ' ' + (c.name || '')).trim() || '未命名中心',
+            meta: [c.pi_name ? 'PI ' + c.pi_name : '', c.contact_crc ? 'CRC ' + c.contact_crc : '', c.department || ''].filter(Boolean).join(' · '),
+            extra: [c.pi_phone, c.pi_email, c.contact_crc_phone, c.contact_ethics, c.address].filter(Boolean).join(' ') });
+    });
+    (taskData.tasks || []).forEach(function(t) {
+        add({ type: 'task', icon: 'fa-tasks', label: '待办', id: t.id,
+            title: t.title || '未命名待办',
+            meta: [t.project_name, t.center_name, t.due_date ? '截止 ' + t.due_date : '', t.task_status === 'waiting_crc' ? '跟进CRC' : ''].filter(Boolean).join(' · '),
+            extra: [t.priority, t.ability_type].filter(Boolean).join(' ') });
+    });
+    (findingData.findings || []).forEach(function(f) {
+        add({ type: 'finding', icon: 'fa-search', label: '问题', id: f.id,
+            title: f.finding_number || '未编号问题',
+            meta: [f.status || 'Open', f.severity, f.center_name || f.project_name, f.due_date ? '截止 ' + f.due_date : ''].filter(Boolean).join(' · '),
+            extra: [f.description, f.corrective_action, f.category].filter(Boolean).join(' ') });
+    });
+    (letterData.letters || []).forEach(function(l) {
+        add({ type: 'ethics', icon: 'fa-file-contract', label: '递交信', id: l.id,
+            title: l.project_name || '未选择项目',
+            meta: [l.center_name, l.submission_date, (l.items || []).length + '份文件'].filter(Boolean).join(' · '),
+            extra: [l.submitter_name, l.ethics_committee].filter(Boolean).join(' ') });
+    });
+
+    window._globalSearchIndex = entries;
+    return entries;
+};
+
+window.runGlobalSearch = async function(query) {
+    var box = document.getElementById('globalSearchResults');
+    if (!box) return;
+    var q = (query || '').trim().toLowerCase();
+    if (!q) {
+        window.closeGlobalSearch();
+        return;
+    }
+    box.classList.add('show');
+    box.innerHTML = '<div class="global-search-state"><i class="fas fa-spinner fa-spin"></i> 搜索中...</div>';
+    try {
+        var index = await window.loadGlobalSearchIndex(false);
+        var parts = q.split(/\s+/).filter(Boolean);
+        var results = index.map(function(item) {
+            var score = 0;
+            if (item.title.toLowerCase().includes(q)) score += 8;
+            if (item.title.toLowerCase().startsWith(q)) score += 6;
+            if (item.searchText.includes(q)) score += 4;
+            parts.forEach(function(part) { if (item.searchText.includes(part)) score += 2; });
+            return Object.assign({}, item, { score: score });
+        }).filter(function(item) { return item.score > 0; })
+          .sort(function(a, b) { return b.score - a.score || a.title.localeCompare(b.title, 'zh-CN'); })
+          .slice(0, 8);
+        window._globalSearchResults = results;
+        window.renderGlobalSearchResults(results, q);
+    } catch (err) {
+        console.error('global search failed:', err);
+        box.innerHTML = '<div class="global-search-state danger">搜索失败，请稍后重试</div>';
+    }
+};
+
+window.renderGlobalSearchResults = function(results) {
+    var box = document.getElementById('globalSearchResults');
+    if (!box) return;
+    if (!results.length) {
+        box.innerHTML = '<div class="global-search-state">没有找到匹配结果</div>';
+        return;
+    }
+    box.innerHTML = results.map(function(item, idx) {
+        return '<button class="global-search-item" onclick="window.openGlobalSearchResult(' + idx + ')">' +
+            '<span class="global-search-kind"><i class="fas ' + item.icon + '"></i>' + item.label + '</span>' +
+            '<span class="global-search-main"><strong>' + window.escHtml(item.title) + '</strong>' +
+            '<small>' + window.escHtml(item.meta || '') + '</small></span>' +
+            '<i class="fas fa-arrow-right global-search-arrow"></i>' +
+            '</button>';
+    }).join('');
+};
+
+window.openGlobalSearchResult = async function(index) {
+    var item = window._globalSearchResults && window._globalSearchResults[index];
+    if (!item) return;
+    window.closeGlobalSearch();
+    var input = document.getElementById('globalSearchInput');
+    if (input) input.blur();
+
+    if (item.type === 'project') {
+        await window.navigateTo('projects');
+        await window.viewProject(item.id);
+    } else if (item.type === 'center') {
+        await window.openCenterDetail(item.id);
+    } else if (item.type === 'task') {
+        window.viewTask(item.id);
+    } else if (item.type === 'finding') {
+        await window.navigateTo('findings');
+        window.highlightFinding(item.id);
+    } else if (item.type === 'ethics') {
+        await window.navigateTo('ethics');
+        if (window.viewEthicsLetter) window.viewEthicsLetter(item.id);
+    }
+};
+
+window.highlightFinding = function(id) {
+    setTimeout(function() {
+        var el = document.querySelector('[data-finding-id="' + id + '"]');
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('search-highlight');
+        setTimeout(function() { el.classList.remove('search-highlight'); }, 1800);
+    }, 350);
+};
 // ========== 模态框操作 ==========
 
 window.openModal = function(html) {
