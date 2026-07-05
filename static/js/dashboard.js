@@ -4,19 +4,115 @@
 let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
-    const [statsData, projData, centersData] = await Promise.all([
-        api.getStats(), api.getProjects(), api.getCenters()
+    const [statsData, projData, centersData, tasksData, findingsData, lettersData] = await Promise.all([
+        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters()
     ]);
     
     if (window.state) {
         window.state.projects = projData.projects || [];
+        window.state.tasks = tasksData.tasks || [];
     }
+
     const centers = centersData.centers || [];
-    
+    const tasks = tasksData.tasks || [];
+    const findings = findingsData.findings || [];
+    const letters = lettersData.letters || [];
     const s = statsData.stats || {};
-    const centerProgress = s.center_progress || [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const openTasks = tasks.filter(t => !t.done);
+    const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < todayStr);
+    const todayTasks = openTasks.filter(t => t.due_date === todayStr);
+    const dueWeekTasks = openTasks.filter(t => t.due_date && t.due_date >= todayStr && t.due_date <= weekStr);
+    const waitingCrcTasks = openTasks.filter(t => t.task_status === 'waiting_crc');
+    const activeFindings = findings.filter(f => !['Resolved', 'Closed'].includes(f.status));
+    const overdueFindings = activeFindings.filter(f => f.due_date && f.due_date < todayStr);
+    const riskCenters = centers
+        .filter(c => (c.task_count || 0) > 0 || (c.open_finding_count || 0) > 0)
+        .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
+        .slice(0, 4);
+
+    const uniqueTasks = Array.from(new Map(overdueTasks.concat(todayTasks).concat(dueWeekTasks).map(t => [t.id, t])).values()).slice(0, 6);
+    const taskRows = uniqueTasks.length ? uniqueTasks.map(t => {
+        const isOverdue = t.due_date && t.due_date < todayStr;
+        const isToday = t.due_date === todayStr;
+        return `<button class="wb-list-row" onclick="window.viewTask('${t.id}')">
+            <span class="wb-row-main">
+                <strong>${window.escHtml(t.title)}</strong>
+                <small>${window.escHtml(t.project_name || '')}${t.center_name ? ' · ' + window.escHtml(t.center_name) : ''}</small>
+            </span>
+            <span class="wb-chip ${isOverdue ? 'danger' : isToday ? 'warning' : ''}">${t.due_date || '无日期'}</span>
+        </button>`;
+    }).join('') : '<div class="wb-empty">今天没有明确到期的待办。</div>';
+
+    const findingRows = activeFindings.slice(0, 5).map(f => {
+        const isOverdue = f.due_date && f.due_date < todayStr;
+        return `<button class="wb-list-row" onclick="window.navigateTo('findings')">
+            <span class="wb-row-main">
+                <strong>${window.escHtml(f.finding_number || '未编号问题')}</strong>
+                <small>${window.escHtml(f.center_name || f.project_name || '')}</small>
+            </span>
+            <span class="wb-chip ${isOverdue ? 'danger' : ''}">${window.escHtml(f.status || 'Open')}</span>
+        </button>`;
+    }).join('') || '<div class="wb-empty">暂无需要跟进的监查问题。</div>';
+
+    const centerRows = riskCenters.map(c => `<button class="wb-list-row" onclick="window.openCenterDetail('${c.id}')">
+        <span class="wb-row-main">
+            <strong>${window.escHtml((c.code || '') + ' ' + (c.name || ''))}</strong>
+            <small>${c.task_count || 0} 个待办 · ${c.open_finding_count || 0} 个Open问题</small>
+        </span>
+        <i class="fas fa-chevron-right"></i>
+    </button>`).join('') || '<div class="wb-empty">暂无高风险中心。</div>';
+
+    const letterRows = letters.slice(0, 4).map(l => `<button class="wb-list-row" onclick="window.viewEthicsLetter ? window.viewEthicsLetter('${l.id}') : window.navigateTo('ethics')">
+        <span class="wb-row-main">
+            <strong>${window.escHtml(l.project_name || '未选择项目')}</strong>
+            <small>${window.escHtml(l.center_name || '')} · ${l.submission_date || '未设日期'}</small>
+        </span>
+        <span class="wb-chip">${(l.items || []).length}份</span>
+    </button>`).join('') || '<div class="wb-empty">暂无递交信记录。</div>';
     
     content.innerHTML = `
+        <section class="workbench-shell">
+            <div class="workbench-head">
+                <div>
+                    <h2>今日工作台</h2>
+                    <p>${todayStr} · 先处理风险最高、最临近截止的事项</p>
+                </div>
+                <div class="workbench-actions">
+                    <button class="btn btn-primary btn-sm" onclick="window.showAddTask()"><i class="fas fa-plus"></i> 新建待办</button>
+                    <button class="btn btn-outline btn-sm" onclick="window.navigateTo('findings').then(function(){ window.openNewFindingForm(); })"><i class="fas fa-search-plus"></i> 录入问题</button>
+                    <button class="btn btn-outline btn-sm" onclick="window.navigateTo('ethics').then(function(){ window.openEthicsLetterForm(); })"><i class="fas fa-file-word"></i> 新建递交信</button>
+                </div>
+            </div>
+            <div class="workbench-metrics">
+                <button class="wb-metric ${overdueTasks.length ? 'danger' : ''}" onclick="window.openDashboardTasks('overdue')"><strong>${overdueTasks.length}</strong><span>逾期待办</span></button>
+                <button class="wb-metric ${todayTasks.length ? 'warning' : ''}" onclick="window.openDashboardTasks('today')"><strong>${todayTasks.length}</strong><span>今日到期</span></button>
+                <button class="wb-metric" onclick="window.openDashboardTasks('due_week')"><strong>${dueWeekTasks.length}</strong><span>本周到期</span></button>
+                <button class="wb-metric ${waitingCrcTasks.length ? 'warning' : ''}" onclick="window.openDashboardTasks('waiting_crc')"><strong>${waitingCrcTasks.length}</strong><span>等CRC</span></button>
+                <button class="wb-metric ${activeFindings.length ? 'danger' : ''}" onclick="window.navigateTo('findings')"><strong>${activeFindings.length}</strong><span>未关闭问题</span></button>
+                <button class="wb-metric ${overdueFindings.length ? 'danger' : ''}" onclick="window.navigateTo('findings')"><strong>${overdueFindings.length}</strong><span>逾期问题</span></button>
+            </div>
+            <div class="workbench-grid">
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-list-check"></i> 优先处理</div>
+                    ${taskRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-magnifying-glass-chart"></i> 监查问题</div>
+                    ${findingRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-hospital-user"></i> 关注中心</div>
+                    ${centerRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-file-contract"></i> 近期递交信</div>
+                    ${letterRows}
+                </div>
+            </div>
+        </section>
+
         <div class="stats-grid">
             <div class="stat-card stat-blue">
                 <i class="fas fa-folder-open"></i>
@@ -105,6 +201,11 @@ window.loadDashboard = async function(content) {
     window.renderCal();
 };
 
+window.openDashboardTasks = function(filter) {
+    window.navigateTo('tasks').then(function() {
+        if (window.applyTaskFilter) window.applyTaskFilter(filter);
+    });
+};
 window.renderCal = async function() {
     // 获取所有未完成任务
     const data = await api.getTasks();

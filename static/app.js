@@ -69,9 +69,9 @@ window.navigateTo = async function(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
     
-    var titles = { dashboard: '总览', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交' };
+    var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交' };
     var pageTitle = document.getElementById('pageTitle');
-    if (pageTitle) pageTitle.textContent = titles[page] || '总览';
+    if (pageTitle) pageTitle.textContent = titles[page] || '工作台';
     
     window.showLoading();
     try {
