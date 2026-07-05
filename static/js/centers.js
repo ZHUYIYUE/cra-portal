@@ -102,7 +102,7 @@ window.renderCenterTabContent = function(tab, data) {
     const { center, staff, ethics, pds, centerTasks, centerFindings, today } = data;
     const el = document.getElementById('center-tab-content');
     if (!el) return;
-    if (tab === '概览') window.renderCenterTabOverview(el, center);
+    if (tab === '概览') window.renderCenterTabOverview(el, data);
     else if (tab === '研究人员') window.renderCenterTabStaff(el, staff, center.id);
     else if (tab === '伦理递交') window.renderCenterTabEthics(el, ethics, center.id);
     else if (tab === '方案偏离') window.renderCenterTabPDs(el, pds, center.id);
@@ -111,34 +111,100 @@ window.renderCenterTabContent = function(tab, data) {
 
 // ========== Tab 1: 概览 ==========
 
-window.renderCenterTabOverview = function(el, c) {
-    const infoItem = (icon, bg, label, value) => value ? `
+window.renderCenterTabOverview = function(el, data) {
+    const c = data.center || {};
+    const staff = data.staff || [];
+    const ethics = data.ethics || [];
+    const pds = data.pds || [];
+    const centerTasks = data.centerTasks || [];
+    const centerFindings = data.centerFindings || [];
+    const today = data.today || new Date().toISOString().split('T')[0];
+    const openTasks = centerTasks.filter(t => !t.done);
+    const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < today);
+    const activeFindings = centerFindings.filter(f => !['Resolved', 'Closed'].includes(f.status));
+    const overdueFindings = activeFindings.filter(f => f.due_date && f.due_date < today);
+    const pendingEthics = ethics.filter(e => !e.approval_date);
+    const openPDs = pds.filter(pd => pd.status !== 'Closed');
+    const missingStaffDocs = staff.filter(s => !s.gcp_collected || !s.cv_collected || !s.license_collected).length;
+    const requiredFields = ['pi_name', 'pi_phone', 'pi_email', 'contact_crc', 'contact_crc_phone', 'contact_ethics'];
+    const completedFields = requiredFields.filter(f => !!c[f]).length;
+    const completionPct = Math.round(completedFields / requiredFields.length * 100);
+
+    const riskTone = overdueTasks.length || overdueFindings.length ? 'danger' : (openTasks.length || activeFindings.length || pendingEthics.length || openPDs.length ? 'warning' : 'ok');
+    const jsArg = value => window.escAttr(JSON.stringify(value || ''));
+    const infoItem = (icon, bg, label, value, copyValue) => value ? `
         <div class="cd-info-card">
             <div class="cd-info-icon" style="background:${bg};">${icon}</div>
             <div class="cd-info-body">
                 <div class="cd-info-label">${label}</div>
                 <div class="cd-info-value">${window.escHtml(value)}</div>
             </div>
+            ${copyValue ? `<button class="cd-copy-btn" onclick="window.copyCenterText(${jsArg(copyValue)})" title="复制"><i class="fas fa-copy"></i></button>` : ''}
         </div>` : '';
+    const contactCard = (title, name, detail, icon, tone) => `
+        <div class="cc-contact-card ${tone}">
+            <div class="cc-contact-icon"><i class="fas ${icon}"></i></div>
+            <div class="cc-contact-body">
+                <div class="cc-contact-label">${title}</div>
+                <strong>${name ? window.escHtml(name) : '未填写'}</strong>
+                <small>${detail ? window.escHtml(detail) : '缺少联系方式'}</small>
+            </div>
+            ${detail ? `<button class="cd-copy-btn" onclick="window.copyCenterText(${jsArg(detail)})" title="复制"><i class="fas fa-copy"></i></button>` : ''}
+        </div>`;
+    const metric = (num, label, tone) => `<div class="cc-metric ${tone || ''}"><strong>${num}</strong><span>${label}</span></div>`;
+
     el.innerHTML = `
         <div class="cd-section">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-                <div style="font-size:1.05em;font-weight:600;color:#2c3e50;"><i class="fas fa-hospital" style="color:#3498db;margin-right:6px;"></i>${window.escHtml(c.code||'')} ${window.escHtml(c.name||'')}</div>
-                <button class="btn btn-sm btn-primary" onclick="window.editCenterInfo('${c.id}')" style="border-radius:20px;padding:5px 14px;font-size:0.85em;"><i class="fas fa-edit"></i> 编辑</button>
-            </div>
+            <section class="center-cockpit">
+                <div class="cc-head">
+                    <div>
+                        <div class="cc-eyebrow">中心驾驶舱</div>
+                        <h3><i class="fas fa-hospital"></i> ${window.escHtml(c.code || '')} ${window.escHtml(c.name || '')}</h3>
+                    </div>
+                    <div class="cc-actions">
+                        <button class="btn btn-sm btn-primary" onclick="window.showAddTaskForCenter('${c.id}')"><i class="fas fa-plus"></i> 新建待办</button>
+                        <button class="btn btn-sm btn-outline" onclick="window.openCenterFindingForm('${c.id}')"><i class="fas fa-search-plus"></i> 录入问题</button>
+                        <button class="btn btn-sm btn-outline" onclick="window.openNewEthicsForm('${c.id}')"><i class="fas fa-file-alt"></i> 伦理记录</button>
+                        <button class="btn btn-sm btn-outline" onclick="window.openNewPDForm('${c.id}')"><i class="fas fa-exclamation-triangle"></i> 方案偏离</button>
+                        <button class="btn btn-sm btn-outline" onclick="window.editCenterInfo('${c.id}')"><i class="fas fa-edit"></i> 编辑</button>
+                    </div>
+                </div>
+                <div class="cc-status ${riskTone}">
+                    <div>
+                        <strong>${riskTone === 'danger' ? '需要优先处理' : riskTone === 'warning' ? '有事项待跟进' : '暂无明显风险'}</strong>
+                        <span>资料完整度 ${completionPct}% · ${staff.length} 名研究人员 · ${ethics.length} 条伦理记录</span>
+                    </div>
+                    <div class="cc-progress"><span style="width:${completionPct}%"></span></div>
+                </div>
+                <div class="cc-metrics">
+                    ${metric(openTasks.length, '进行中待办', openTasks.length ? 'warning' : '')}
+                    ${metric(overdueTasks.length, '逾期待办', overdueTasks.length ? 'danger' : '')}
+                    ${metric(activeFindings.length, '未关闭问题', activeFindings.length ? 'danger' : '')}
+                    ${metric(overdueFindings.length, '逾期问题', overdueFindings.length ? 'danger' : '')}
+                    ${metric(pendingEthics.length, '伦理待批', pendingEthics.length ? 'warning' : '')}
+                    ${metric(openPDs.length, 'Open偏离', openPDs.length ? 'warning' : '')}
+                    ${metric(missingStaffDocs, '证照待补', missingStaffDocs ? 'warning' : '')}
+                </div>
+                <div class="cc-contacts">
+                    ${contactCard('PI', c.pi_name, c.pi_phone || c.pi_email, 'fa-user-doctor', c.pi_name && (c.pi_phone || c.pi_email) ? 'ok' : 'missing')}
+                    ${contactCard('CRC', c.contact_crc, c.contact_crc_phone, 'fa-headset', c.contact_crc && c.contact_crc_phone ? 'ok' : 'missing')}
+                    ${contactCard('伦理联系', c.contact_ethics ? '已记录' : '', c.contact_ethics, 'fa-scale-balanced', c.contact_ethics ? 'ok' : 'missing')}
+                </div>
+            </section>
+
             ${c.pi_name || c.pi_phone || c.pi_email ? `
                 <div class="cd-section-title"><i class="fas fa-user-md"></i> 主要研究者</div>
                 <div class="cd-grid-2">
                     ${infoItem('<i class="fas fa-user" style="color:#d46b08;"></i>', '#fff3e0', 'PI 姓名', c.pi_name)}
-                    ${infoItem('<i class="fas fa-phone" style="color:#2980b9;"></i>', '#e8f4fd', 'PI 电话', c.pi_phone)}
+                    ${infoItem('<i class="fas fa-phone" style="color:#2980b9;"></i>', '#e8f4fd', 'PI 电话', c.pi_phone, c.pi_phone)}
                 </div>
-                ${infoItem('<i class="fas fa-envelope" style="color:#722ed1;"></i>', '#f9f0ff', 'PI 邮箱', c.pi_email)}
+                ${infoItem('<i class="fas fa-envelope" style="color:#722ed1;"></i>', '#f9f0ff', 'PI 邮箱', c.pi_email, c.pi_email)}
             ` : ''}
             ${c.contact_crc || c.contact_crc_phone ? `
                 <div class="cd-section-title"><i class="fas fa-headset"></i> CRC 信息</div>
                 <div class="cd-grid-2">
                     ${infoItem('<i class="fas fa-user-circle" style="color:#c62828;"></i>', '#fce4ec', 'CRC 姓名', c.contact_crc)}
-                    ${infoItem('<i class="fas fa-phone-alt" style="color:#2e7d32;"></i>', '#e8f5e9', 'CRC 电话', c.contact_crc_phone)}
+                    ${infoItem('<i class="fas fa-phone-alt" style="color:#2e7d32;"></i>', '#e8f5e9', 'CRC 电话', c.contact_crc_phone, c.contact_crc_phone)}
                 </div>
             ` : ''}
             ${c.department ? `
@@ -153,11 +219,12 @@ window.renderCenterTabOverview = function(el, c) {
                         <div class="cd-info-label">联系方式</div>
                         <div class="cd-info-value" style="white-space:pre-line;line-height:1.6;">${window.escHtml(c.contact_ethics)}</div>
                     </div>
+                    <button class="cd-copy-btn" onclick="window.copyCenterText(${jsArg(c.contact_ethics)})" title="复制"><i class="fas fa-copy"></i></button>
                 </div>
             ` : ''}
             ${c.address ? `
                 <div class="cd-section-title"><i class="fas fa-map-marker-alt"></i> 地址</div>
-                ${infoItem('<i class="fas fa-map-pin" style="color:#e74c3c;"></i>', '#fff1f0', '医院地址', c.address)}
+                ${infoItem('<i class="fas fa-map-pin" style="color:#e74c3c;"></i>', '#fff1f0', '医院地址', c.address, c.address)}
             ` : ''}
             ${!c.pi_name && !c.contact_crc && !c.department && !c.contact_ethics && !c.address ? `
                 <div class="cd-empty">
@@ -169,6 +236,34 @@ window.renderCenterTabOverview = function(el, c) {
     `;
 };
 
+window.copyCenterText = async function(text) {
+    if (!text) return;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            const input = document.createElement('textarea');
+            input.value = text;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            input.remove();
+        }
+        window.showToast('已复制');
+    } catch (err) {
+        window.showToast('复制失败');
+    }
+};
+
+window.openCenterFindingForm = async function(centerId) {
+    const data = await api.getCenter(centerId);
+    if (!data.success || !data.center) {
+        alert('未找到中心信息');
+        return;
+    }
+    await window.navigateTo('findings');
+    window.openNewFindingForm({ project_id: data.center.project_id || '', center_id: centerId });
+};
 // ========== Tab 2: 研究人员 ==========
 
 window.renderCenterTabStaff = function(el, staffList, centerId) {
