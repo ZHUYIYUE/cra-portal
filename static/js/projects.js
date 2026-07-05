@@ -319,7 +319,7 @@ window.submitCreateProject = async function(e) {
         dbl_date: form.dbl_date.value,
         notes: form.notes.value
     };
-
+    
     const result = await api.createProject(data);
     
     if (result.success) {

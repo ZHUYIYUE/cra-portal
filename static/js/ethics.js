@@ -34,6 +34,47 @@ window.ETHICS_PLACEHOLDERS = [
     { tag: '{#docs}{copies}{/docs}', desc: '份数（循环）' }
 ];
 
+// ========== 生成体验辅助函数 ==========
+
+window.getEthicsTemplateStatusHtml = function(templates) {
+    var requiredTypes = ['CRA_to_PI', 'PI_to_Ethics'];
+    var cards = requiredTypes.map(function(type) {
+        var list = (templates || []).filter(function(t) { return (t.letter_type || 'CRA_to_PI') === type; });
+        var ok = list.length > 0;
+        var defaultTmpl = list.find(function(t) { return t.is_default; }) || list[0];
+        var color = ok ? '#27ae60' : '#e67e22';
+        var bg = ok ? '#eefaf2' : '#fff7e8';
+        var icon = ok ? 'fa-check-circle' : 'fa-exclamation-circle';
+        var title = window.ETHICS_LETTER_TYPES[type] || type;
+        return '<div style="flex:1;min-width:220px;background:' + bg + ';border:1px solid ' + color + '33;border-left:4px solid ' + color + ';border-radius:8px;padding:10px 12px;">' +
+            '<div style="font-weight:600;color:#2c3e50;"><i class="fas ' + icon + '" style="color:' + color + ';"></i> ' + title + '</div>' +
+            '<div style="font-size:12px;color:#666;margin-top:4px;">' +
+            (ok ? ('模板：' + window.escHtml(defaultTmpl.name || '未命名模板') + (defaultTmpl.is_default ? '（默认）' : '')) : '还没有可用模板，生成前需要先上传') +
+            '</div></div>';
+    }).join('');
+    return '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">' + cards + '</div>';
+};
+
+window.getEthicsGenerationWarnings = function(letter) {
+    var warnings = [];
+    var type = letter.letter_type || 'CRA_to_PI';
+    if (!letter.project_full_name) warnings.push('项目全称为空，Word 中 {project_full_name} 会留空');
+    if (!letter.project_code) warnings.push('方案编号为空，Word 中 {project_code} 会留空');
+    if (!letter.approval_number) warnings.push('通知书/批件编号为空，Word 中 {approval_number} 会留空');
+    if (!letter.sponsor) warnings.push('申办方为空，Word 中 {sponsor} 会留空');
+    if (!letter.center_name) warnings.push('中心名称为空，Word 中 {center_name} 会留空');
+    if (type === 'CRA_to_PI' && !letter.pi_name) warnings.push('PI 姓名为空，CRA 致 PI 递交信可能不完整');
+    if (type === 'PI_to_Ethics' && !letter.ethics_committee) warnings.push('伦理委员会名称为空，PI 致伦理递交信可能不完整');
+    if (!letter.items || letter.items.length === 0) warnings.push('递交文件清单为空');
+    (letter.items || []).forEach(function(item, idx) {
+        if (!item.doc_name) warnings.push('第 ' + (idx + 1) + ' 个文件缺少文件名称');
+    });
+    return warnings;
+};
+
+window.safeEthicsFileName = function(name) {
+    return (name || '递交信').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+};
 // ========== 伦理递交页面 ==========
 
 window.loadEthics = async function(content) {
@@ -42,6 +83,7 @@ window.loadEthics = async function(content) {
     ]);
     var letters = lettersData.letters || [];
     var templates = templatesData.templates || [];
+    var templateStatusHtml = window.getEthicsTemplateStatusHtml(templates);
 
     content.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
@@ -60,6 +102,8 @@ window.loadEthics = async function(content) {
                 已有模板: ${templates.length} 个
             </div>
         </div>
+
+        ${templateStatusHtml}
 
         <div class="card">
             <div class="card-header"><i class="fas fa-file-alt"></i> 递交信记录 (${letters.length})</div>
@@ -96,8 +140,8 @@ window.loadEthics = async function(content) {
                                     <td style="padding:10px 8px;">${(l.items || []).length} 份</td>
                                     <td style="padding:10px 8px;">${window.escHtml(l.submitter_name || '-')}</td>
                                     <td style="padding:10px 8px;text-align:center;white-space:nowrap;">
-                                        <button class="btn btn-text btn-sm" onclick="window.generateEthicsWord('${l.id}')" title="生成Word" style="padding:4px 8px;">
-                                            <i class="fas fa-file-word" style="color:#2980b9;"></i>
+                                        <button class="btn btn-text btn-sm" onclick="window.generateEthicsWord('${l.id}')" title="生成Word" style="padding:4px 8px;color:#2980b9;">
+                                            <i class="fas fa-file-word"></i> 生成
                                         </button>
                                         <button class="btn btn-text btn-sm" onclick="window.viewEthicsLetter('${l.id}')" title="查看" style="padding:4px 8px;">
                                             <i class="fas fa-eye"></i>
@@ -206,7 +250,8 @@ window.openEthicsLetterForm = async function(editId) {
 
             <div style="text-align:right;margin-top:8px;">
                 <button type="button" class="btn btn-text" onclick="window.closeModal()">取消</button>
-                <button type="submit" class="btn btn-primary">保存</button>
+                <button type="submit" class="btn btn-outline" data-action="save" onclick="window._ethicsSubmitAction='save'">保存</button>
+                <button type="submit" class="btn btn-primary" data-action="generate" onclick="window._ethicsSubmitAction='generate'"><i class="fas fa-file-word"></i> 保存并生成Word</button>
             </div>
         </form>
     `);
@@ -349,10 +394,18 @@ window.submitEthicsLetter = async function(e, editId) {
     }
 
     try {
+        var action = window._ethicsSubmitAction || (e.submitter && e.submitter.dataset ? e.submitter.dataset.action : 'save') || 'save';
         var res = editId ? await api.updateEthicsLetter(editId, data) : await api.createEthicsLetter(data);
         if (res.success) {
+            var savedId = editId || res.id;
+            window._ethicsSubmitAction = 'save';
             window.closeModal();
             await window.loadEthics(document.getElementById('pageContent'));
+            if (action === 'generate' && savedId) {
+                await window.generateEthicsWord(savedId);
+            } else {
+                window.showToast('递交信已保存');
+            }
         } else {
             alert('保存失败');
         }
@@ -446,12 +499,20 @@ window.generateEthicsWord = async function(letterId) {
         var letterType = l.letter_type || 'CRA_to_PI';
         var tmplRes = await api.getEthicsTemplates();
         var templates = tmplRes.templates || [];
-        var tmpl = templates.find(function(t) { return t.letter_type === letterType; }) ||
+        var typeTemplates = templates.filter(function(t) { return (t.letter_type || 'CRA_to_PI') === letterType; });
+        var tmpl = typeTemplates.find(function(t) { return t.is_default; }) ||
+                   typeTemplates[0] ||
                    templates.find(function(t) { return t.is_default; }) ||
                    templates[0];
         if (!tmpl) {
             alert('请先上传递交信模板！点击「模板管理」上传公司模板。');
             return;
+        }
+
+        var warnings = window.getEthicsGenerationWarnings(l);
+        if (warnings.length > 0) {
+            var ok = confirm('生成前发现以下信息可能不完整：\n\n- ' + warnings.join('\n- ') + '\n\n仍要继续生成 Word 吗？');
+            if (!ok) return;
         }
 
         // 下载模板文件
@@ -520,7 +581,7 @@ window.generateEthicsWord = async function(letterId) {
 
         // 下载文件
         var typePrefix = letterType === 'PI_to_Ethics' ? 'PI致伦理' : 'CRA致PI';
-        var fileName = typePrefix + '递交信_' + (l.project_name || '') + '_' + (l.center_name || '') + '_' + (l.submission_date || '') + '.docx';
+        var fileName = window.safeEthicsFileName(typePrefix + '递交信_' + (l.project_name || '') + '_' + (l.center_name || '') + '_' + (l.submission_date || '') + '.docx');
         saveAs(generated, fileName);
     } catch (err) {
         console.error('生成Word失败:', err);

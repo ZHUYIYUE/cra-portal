@@ -705,7 +705,7 @@ window.api = {
                 pi_name: c ? (c.pi_name || '') : '',
                 pi_phone: c ? (c.pi_phone || '') : '',
                 contact_ethics: c ? (c.contact_ethics || '') : '',
-                ethics_committee: c ? (c.ethics_committee_name || '') : (letter.ethics_committee || ''),
+                ethics_committee: letter.ethics_committee || (c ? (c.ethics_committee_name || '') : ''),
                 items: items
             })
         };
