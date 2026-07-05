@@ -273,11 +273,24 @@ window.showAddTask = function() {
     window.renderTaskForm('', '新建待办事项');
 };
 
+
+window.showAddTaskForCenter = async function(centerId) {
+    const data = await api.getCenter(centerId);
+    if (!data.success || !data.center) {
+        alert('未找到中心信息');
+        return;
+    }
+    if (!window.state || !window.state.projects || window.state.projects.length === 0) {
+        const projData = await api.getProjects();
+        if (window.state) window.state.projects = projData.projects || [];
+    }
+    window.renderTaskForm(data.center.project_id || '', '新建中心待办', centerId);
+};
 window.showAddTaskForProject = function(projectId) {
     window.renderTaskForm(projectId, '新建待办事项');
 };
 
-window.renderTaskForm = function(projectId, title) {
+window.renderTaskForm = function(projectId, title, selectedCenterId) {
     window.openModal(`
         <div class="modal-header"><h3><i class="fas fa-plus-circle"></i> ${title}</h3></div>
         <form onsubmit="return window.submitCreateTask(event)">
@@ -336,11 +349,11 @@ window.renderTaskForm = function(projectId, title) {
     `);
     // 如果已有项目选中，自动加载其中心
     if (projectId) {
-        window.onTaskProjectChange(projectId);
+        window.onTaskProjectChange(projectId, selectedCenterId);
     }
 };
 
-window.onTaskProjectChange = async function(projectId) {
+window.onTaskProjectChange = async function(projectId, selectedCenterId) {
     const select = document.getElementById('task-center-select');
     if (!select) return;
     if (!projectId) {
@@ -357,7 +370,7 @@ window.onTaskProjectChange = async function(projectId) {
             select.innerHTML = '<option value="">该项目暂无中心</option>';
         } else {
             select.innerHTML = '<option value="">不关联中心</option>' +
-                centers.map(c => `<option value="${c.id}">${window.escHtml(c.code)} - ${window.escHtml(c.name)}</option>`).join('');
+                centers.map(c => `<option value="${c.id}" ${selectedCenterId && c.id === selectedCenterId ? 'selected' : ''}>${window.escHtml(c.code)} - ${window.escHtml(c.name)}</option>`).join('');
             select.disabled = false;
         }
     } catch (e) {

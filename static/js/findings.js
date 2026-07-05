@@ -143,13 +143,14 @@ window.renderFindingsList = function() {
     }).join('');
 };
 
-window.openNewFindingForm = function() {
+window.openNewFindingForm = function(preset) {
     const projects = window._projects || [];
     const centers = window._centers || [];
     const categories = ['必备文件', '试验流程', '中心流程', '知情同意', '随机化/盲法', '数据记录', '药物管理', '其他'];
     const severities = ['Minor', 'Major', 'Critical'];
     const statuses = ['Open', 'In Progress', 'Waiting CRC', 'Resolved', 'Closed'];
     const today = new Date().toISOString().split('T')[0];
+    preset = preset || {};
 
     window.openModal(`
         <h3><i class="fas fa-search" style="color:#1976D2;"></i> 录入监查问题</h3>
@@ -163,7 +164,7 @@ window.openNewFindingForm = function() {
                     <label>所属项目 *</label>
                     <select id="f_project" required onchange="window.onFindingProjectChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择项目</option>
-                        ${projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+                        ${projects.map(p => `<option value="${p.id}" ${preset.project_id === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
                     </select>
                 </div>
             </div>
@@ -172,7 +173,7 @@ window.openNewFindingForm = function() {
                     <label>所属中心</label>
                     <select id="f_center" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:14px;">
                         <option value="">请选择中心（可选）</option>
-                        ${centers.map(c => `<option value="${c.id}" data-project="${c.project_id}">${c.code} ${c.name}</option>`).join('')}
+                        ${centers.map(c => `<option value="${c.id}" data-project="${c.project_id}" ${preset.center_id === c.id ? 'selected' : ''}>${c.code} ${c.name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="form-group">
@@ -220,6 +221,7 @@ window.openNewFindingForm = function() {
             </div>
         </form>
     `);
+    if (preset.project_id) setTimeout(window.onFindingProjectChange, 0);
 };
 
 window.openEditFindingForm = function(id) {
