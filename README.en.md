@@ -1,36 +1,36 @@
-# cra-portal
+# CRA Portal
 
-#### Description
-CRA临床研究助理管理中心
+CRA Portal is a lightweight web tool for CRA clinical trial operations. It helps manage projects, sites, tasks, findings, and ethics submission letters.
 
-#### Software Architecture
-Software architecture description
+## Current Architecture
 
-#### Installation
+- Frontend: static `HTML + CSS + vanilla JavaScript`
+- Backend: Supabase (PostgreSQL + Storage, accessed directly from the browser)
+- Hosting: GitHub Pages (`gh-pages` branch)
+- Word generation: `docxtemplater + PizZip + FileSaver`
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Production Site
 
-#### Instructions
+https://zhuyiyue.github.io/cra-portal/
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+## Key Folders
 
-#### Contribution
+```text
+index.html          # Static entry point
+static/             # Frontend styles and business JS
+supabase/           # Database SQL scripts
+deploy.bat          # Windows deployment helper
+HANDOVER.md         # Detailed handover notes
+legacy-flask/       # Archived Flask/JSON implementation
+```
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+## Deployment
 
+See `部署指南.md`.
 
-#### Gitee Feature
+## Notes
 
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+- There is no build step.
+- Supabase publishable key is public in the frontend; current RLS policy is open for internal-tool usage.
+- `center_count` is computed at read time and is not a database column.
+- Word templates should be modified from the original `.docx` files to preserve header/footer/layout formatting.

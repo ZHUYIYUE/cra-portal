@@ -1,37 +1,45 @@
-# cra-portal
+# CRA Portal
 
-#### 介绍
-CRA临床研究助理管理中心
+CRA Portal 是一个面向 CRA（日常临床试验监查/项目管理）的轻量 Web 工具，用于集中管理项目、中心、待办事项、监查问题和伦理递交信。
 
-#### 软件架构
-软件架构说明
+## 当前架构
 
+- 前端：纯静态 `HTML + CSS + 原生 JavaScript`
+- 后端：Supabase（PostgreSQL + Storage，前端直连 PostgREST）
+- 部署：GitHub Pages（`gh-pages` 分支）
+- Word 生成：`docxtemplater + PizZip + FileSaver`
 
-#### 安装教程
+## 线上地址
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+https://zhuyiyue.github.io/cra-portal/
 
-#### 使用说明
+## 主要功能
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+- 项目管理
+- 中心管理
+- 待办事项和日历视图
+- 监查问题 Findings 追踪
+- 伦理递交信管理
+- 基于公司 Word 模板自动生成递交信
 
-#### 参与贡献
+## 关键目录
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+```text
+index.html          # 静态入口
+static/             # 前端样式和业务 JS
+supabase/           # 数据库建表/迁移 SQL
+deploy.bat          # Windows 一键部署脚本
+HANDOVER.md         # 详细交接文档
+legacy-flask/       # 旧 Flask/JSON 实现归档，仅供参考
+```
 
+## 部署
 
-#### 特技
+详见 `部署指南.md`。
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+## 开发注意
+
+- 当前没有构建步骤，修改静态文件后部署到 `gh-pages` 即可。
+- Supabase publishable key 在前端公开，当前 RLS 策略是内部工具式全开放。
+- `center_count` 是前端读取时计算字段，不是数据库列。
+- Word 模板应基于原始 `.docx` 修改，避免丢失页眉、页脚和样式。

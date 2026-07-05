@@ -1,4 +1,4 @@
--- CRA Portal - Supabase 数据库迁移脚本
+﻿-- CRA Portal - Supabase 数据库迁移脚本
 -- 在 Supabase SQL Editor 中运行此文件
 
 -- ========== 1. 项目表 ==========
@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS projects (
     name TEXT NOT NULL,
     code TEXT DEFAULT '',
     stage TEXT DEFAULT '',
-    center_count INTEGER DEFAULT 0,
     dbl_date TEXT DEFAULT '',
     notes TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),
