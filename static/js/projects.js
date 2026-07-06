@@ -45,57 +45,182 @@ window.loadProjects = async function(content) {
 };
 
 window.viewProject = async function(projectId) {
-    const data = await api.getProject(projectId);
-    if (!data.success) { alert('加载失败'); return; }
-    
+    const [projectData, tasksData, centersData, findingsData] = await Promise.all([
+        api.getProject(projectId),
+        api.getTasks({project_id: projectId}),
+        api.getCenters(projectId),
+        api.getFindings({project_id: projectId})
+    ]);
+    if (!projectData.success) { alert('加载失败'); return; }
+
+    const p = projectData;
+    const tasks = tasksData.tasks || [];
+    const centers = centersData.centers || [];
+    const findings = findingsData.findings || [];
     if (window.state) {
-        window.state.currentProject = data;
+        window.state.currentProject = p;
     }
-    const p = data;
-    
+
     const content = document.getElementById('pageContent');
     content.innerHTML = `
-        <div class="card">
-            <div class="card-header">
-                <button class="btn btn-text" onclick="window.navigateTo('projects')"><i class="fas fa-arrow-left"></i> 返回</button>
-                <span style="flex:1;text-align:center;font-size:1.2em;"><i class="fas fa-folder"></i> ${window.escHtml(p.name)}</span>
-                <button class="btn btn-primary" onclick="window.showEditProject('${projectId}')"><i class="fas fa-edit"></i> 编辑</button>
+        <div class="project-detail-page">
+            <div class="card project-title-card">
+                <div class="card-header">
+                    <button class="btn btn-text" onclick="window.navigateTo('projects')"><i class="fas fa-arrow-left"></i> 返回</button>
+                    <span style="flex:1;text-align:center;font-size:1.2em;"><i class="fas fa-folder"></i> ${window.escHtml(p.name)}</span>
+                    <button class="btn btn-primary" onclick="window.showEditProject('${projectId}')"><i class="fas fa-edit"></i> 编辑</button>
+                </div>
+                <div class="detail-grid">
+                    <div class="detail-item"><label>项目编号</label><span>${window.escHtml(p.code || '未设置')}</span></div>
+                    <div class="detail-item"><label>当前阶段</label><span>${window.escHtml(p.stage || '未设置')}</span></div>
+                    <div class="detail-item"><label>中心数量</label><span>${centers.length} 家</span></div>
+                    <div class="detail-item"><label>DBL日期</label><span style="${p.dbl_date ? 'color:#e74c3c;font-weight:bold;' : ''}">${p.dbl_date || '未设置'}</span></div>
+                </div>
+                ${p.notes ? `<div class="project-note"><strong>备注：</strong>${window.escHtml(p.notes).replace(/\n/g,'<br>')}</div>` : ''}
             </div>
-            
-            <div class="detail-grid">
-                <div class="detail-item"><label>项目编号</label><span>${window.escHtml(p.code || '未设置')}</span></div>
-                <div class="detail-item"><label>当前阶段</label><span>${window.escHtml(p.stage)}</span></div>
-                <div class="detail-item"><label>中心数量</label><span>${p.center_count || 0} 家</span></div>
-                <div class="detail-item"><label>DBL日期</label><span style="${p.dbl_date ? 'color:#e74c3c;font-weight:bold;' : ''}">${p.dbl_date || '未设置'}</span></div>
-            </div>
-            ${p.notes ? `<div style="margin-top:15px;padding:15px;background:#f8f9fa;border-radius:8px;"><strong>备注：</strong>${window.escHtml(p.notes).replace(/\n/g,'<br>')}</div>` : ''}
-        </div>
 
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-hospital"></i> 中心列表 (${p.center_count || 0} 家)
-                <button class="btn btn-primary btn-sm" onclick="window.showAddCenterModal('${projectId}')" style="margin-left:auto;">
-                    <i class="fas fa-plus"></i> 添加中心
-                </button>
-            </div>
-            <div id="projectCenters"></div>
-        </div>
+            ${window.renderProjectCockpit(projectId, p, centers, tasks, findings)}
 
-        <div class="card">
-            <div class="card-header">
-                <i class="fas fa-tasks"></i> 待办事项
-                <button class="btn btn-primary btn-sm" onclick="window.showAddTaskForProject('${projectId}')" style="margin-left:auto;">
-                    <i class="fas fa-plus"></i> 新建
-                </button>
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-hospital"></i> 中心列表 (${centers.length} 家)
+                    <button class="btn btn-primary btn-sm" onclick="window.showAddCenterModal('${projectId}')" style="margin-left:auto;">
+                        <i class="fas fa-plus"></i> 添加中心
+                    </button>
+                </div>
+                <div id="projectCenters"></div>
             </div>
-            <div id="projectTasks"></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-tasks"></i> 待办事项
+                    <button class="btn btn-primary btn-sm" onclick="window.showAddTaskForProject('${projectId}')" style="margin-left:auto;">
+                        <i class="fas fa-plus"></i> 新建
+                    </button>
+                </div>
+                <div id="projectTasks"></div>
+            </div>
         </div>
     `;
-    
-    await window.loadProjectTasks(projectId);
-    await window.loadProjectCenters(projectId);
+
+    const centersEl = document.getElementById('projectCenters');
+    if (centersEl) centersEl.dataset.projectId = projectId;
+    window.renderCenters(centers, projectId);
+    window.renderProjectTasks(tasks);
 };
 
+window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
+    const today = new Date().toISOString().split('T')[0];
+    const openTasks = tasks.filter(t => !t.done);
+    const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < today);
+    const activeFindings = findings.filter(f => !['Resolved', 'Closed'].includes(f.status));
+    const overdueFindings = activeFindings.filter(f => f.due_date && f.due_date < today);
+    const criticalFindings = activeFindings.filter(f => f.severity === 'Critical');
+    const centerMilestones = centers.reduce((acc, c) => {
+        const ms = Array.isArray(c.milestones) ? c.milestones : [];
+        acc.total += ms.length;
+        acc.done += ms.filter(m => m.done).length;
+        acc.overdue += ms.filter(m => !m.done && m.date && m.date < today).length;
+        return acc;
+    }, { total: 0, done: 0, overdue: 0 });
+    const milestonePct = centerMilestones.total ? Math.round(centerMilestones.done / centerMilestones.total * 100) : 0;
+
+    let dblLabel = '未设置';
+    let dblTone = 'warning';
+    if (p.dbl_date) {
+        const days = Math.ceil((new Date(p.dbl_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
+        dblLabel = days < 0 ? '已过期' : `${days}天`;
+        dblTone = days < 0 || days <= 14 ? 'danger' : days <= 45 ? 'warning' : '';
+    }
+
+    const riskTone = overdueTasks.length || overdueFindings.length || criticalFindings.length || dblTone === 'danger'
+        ? 'danger'
+        : (openTasks.length || activeFindings.length || centerMilestones.overdue || dblTone === 'warning' ? 'warning' : 'ok');
+    const statusText = riskTone === 'danger' ? '项目需要优先处理' : riskTone === 'warning' ? '项目有事项待跟进' : '项目运行平稳';
+    const metric = (num, label, tone) => `<div class="pc-metric ${tone || ''}"><strong>${num}</strong><span>${label}</span></div>`;
+
+    const riskCenters = centers.map(c => {
+        const ms = Array.isArray(c.milestones) ? c.milestones : [];
+        const done = ms.filter(m => m.done).length;
+        const pct = ms.length ? Math.round(done / ms.length * 100) : 0;
+        const overdueMs = ms.filter(m => !m.done && m.date && m.date < today).length;
+        const score = (c.open_finding_count || 0) * 4 + overdueMs * 3 + (c.task_count || 0);
+        return { center: c, pct: pct, overdueMs: overdueMs, score: score };
+    }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 4);
+
+    const suggestions = [];
+    if (!centers.length) suggestions.push(['fa-hospital', '先添加中心，项目看板才有可跟踪对象']);
+    if (!p.dbl_date) suggestions.push(['fa-calendar-plus', '补充 DBL 日期，便于自动判断项目时间风险']);
+    if (overdueTasks.length) suggestions.push(['fa-clock', `优先处理 ${overdueTasks.length} 项逾期待办`]);
+    if (overdueFindings.length) suggestions.push(['fa-search', `跟进 ${overdueFindings.length} 个逾期监查问题`]);
+    if (criticalFindings.length) suggestions.push(['fa-exclamation-circle', `确认 ${criticalFindings.length} 个 Critical 问题的整改路径`]);
+    if (centerMilestones.overdue) suggestions.push(['fa-flag-checkered', `检查 ${centerMilestones.overdue} 个逾期中心里程碑`]);
+    if (!suggestions.length) suggestions.push(['fa-check-circle', '暂无明显风险，可以继续按计划推进']);
+
+    return `
+        <section class="project-cockpit">
+            <div class="pc-head">
+                <div>
+                    <div class="pc-eyebrow">项目驾驶舱</div>
+                    <h3><i class="fas fa-chart-line"></i> ${window.escHtml(p.code || p.name || '项目')}</h3>
+                </div>
+                <div class="pc-actions">
+                    <button class="btn btn-sm btn-primary" onclick="window.showAddTaskForProject('${projectId}')"><i class="fas fa-plus"></i> 新建待办</button>
+                    <button class="btn btn-sm btn-outline" onclick="window.openProjectFindingForm('${projectId}')"><i class="fas fa-search-plus"></i> 录入问题</button>
+                    <button class="btn btn-sm btn-outline" onclick="window.showAddCenterModal('${projectId}')"><i class="fas fa-hospital"></i> 添加中心</button>
+                    <button class="btn btn-sm btn-outline" onclick="window.focusProjectFindings('${projectId}')"><i class="fas fa-filter"></i> 查看问题</button>
+                </div>
+            </div>
+            <div class="pc-status ${riskTone}">
+                <div>
+                    <strong>${statusText}</strong>
+                    <span>${centers.length} 家中心 · ${openTasks.length} 项进行中待办 · ${activeFindings.length} 个未关闭问题 · 里程碑 ${milestonePct}%</span>
+                </div>
+                <div class="pc-progress"><span style="width:${milestonePct}%"></span></div>
+            </div>
+            <div class="pc-metrics">
+                ${metric(openTasks.length, '进行中待办', openTasks.length ? 'warning' : '')}
+                ${metric(overdueTasks.length, '逾期待办', overdueTasks.length ? 'danger' : '')}
+                ${metric(activeFindings.length, '未关闭问题', activeFindings.length ? 'danger' : '')}
+                ${metric(overdueFindings.length, '逾期问题', overdueFindings.length ? 'danger' : '')}
+                ${metric(criticalFindings.length, 'Critical问题', criticalFindings.length ? 'danger' : '')}
+                ${metric(dblLabel, '距离DBL', dblTone)}
+            </div>
+            <div class="pc-grid">
+                <div class="pc-panel">
+                    <div class="pc-panel-title"><i class="fas fa-hospital-user"></i> 重点中心</div>
+                    ${riskCenters.length ? riskCenters.map(item => `
+                        <button class="pc-risk-row" onclick="window.openCenterDetail('${item.center.id}')">
+                            <span><strong>${window.escHtml(item.center.code || '')} ${window.escHtml(item.center.name || '')}</strong><small>${item.center.task_count || 0} 待办 · ${item.center.open_finding_count || 0} Open问题 · 里程碑 ${item.pct}%</small></span>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    `).join('') : '<div class="pc-empty">暂无高风险中心</div>'}
+                </div>
+                <div class="pc-panel">
+                    <div class="pc-panel-title"><i class="fas fa-list-check"></i> 下一步建议</div>
+                    <div class="pc-suggestions">
+                        ${suggestions.slice(0, 5).map(s => `<div class="pc-suggestion"><i class="fas ${s[0]}"></i><span>${s[1]}</span></div>`).join('')}
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+};
+
+window.openProjectFindingForm = async function(projectId) {
+    await window.navigateTo('findings');
+    window.openNewFindingForm({ project_id: projectId });
+};
+
+window.focusProjectFindings = async function(projectId) {
+    await window.navigateTo('findings');
+    const filter = document.getElementById('filterProject');
+    if (filter) {
+        filter.value = projectId;
+        window.onFilterProjectChange();
+        window.renderFindingsList();
+    }
+};
 window.loadProjectCenters = async function(projectId) {
     try {
         const data = await api.getCenters(projectId);
@@ -467,16 +592,30 @@ window.confirmDeleteProject = function(id, name) {
 window.loadProjectTasks = async function(projectId) {
     const container = document.getElementById('projectTasks');
     if (!container) return;
-    
+
     const data = await api.getTasks({project_id: projectId});
-    const tasks = data.tasks || [];
-    
-    if (tasks.length === 0) {
+    window.renderProjectTasks(data.tasks || []);
+};
+
+window.renderProjectTasks = function(tasks) {
+    const container = document.getElementById('projectTasks');
+    if (!container) return;
+
+    if (!tasks || tasks.length === 0) {
         container.innerHTML = '<p style="color:#999;">暂无待办事项</p>';
         return;
     }
-    
-    container.innerHTML = tasks.map(t => {
+
+    const sorted = tasks.slice().sort((a, b) => {
+        if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+        const ad = a.due_date || '9999-12-31';
+        const bd = b.due_date || '9999-12-31';
+        if (ad !== bd) return ad < bd ? -1 : 1;
+        const order = { high: 0, medium: 1, low: 2 };
+        return (order[a.priority] ?? 1) - (order[b.priority] ?? 1);
+    });
+
+    container.innerHTML = sorted.map(t => {
         const taskStatus = t.task_status || 'pending';
         const isWaitingCrc = taskStatus === 'waiting_crc' && !t.done;
         return `
