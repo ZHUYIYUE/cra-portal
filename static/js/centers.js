@@ -66,7 +66,8 @@ window.loadCenterDetail = async function(content) {
         </div>
     `;
 
-    window.renderCenterTabContent('概览', window._cdc);
+    var activeTab = (window.state && window.CENTER_TABS.includes(window.state.centerDetailTab)) ? window.state.centerDetailTab : '概览';
+    window.renderCenterTabContent(activeTab, window._cdc);
 };
 
 window.switchCenterTab = function(tab, btn) {
@@ -478,10 +479,10 @@ window.toggleDate = function(inputId, checked) {
 
 // ========== 中心详情弹窗 ==========
 
-window.openCenterDetail = async function(centerId) {
+window.openCenterDetail = async function(centerId, tab) {
     if (window.state) {
         window.state.currentCenterId = centerId;
-        window.state.centerDetailTab = '概览';
+        window.state.centerDetailTab = window.CENTER_TABS.includes(tab) ? tab : '概览';
     }
     if (window.loadPage) {
         await window.loadPage('center-detail');

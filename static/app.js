@@ -71,7 +71,7 @@ window.navigateTo = async function(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
     
-    var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交' };
+    var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交', quality: '数据质量' };
     var pageTitle = document.getElementById('pageTitle');
     if (pageTitle) pageTitle.textContent = titles[page] || '工作台';
     
@@ -97,6 +97,7 @@ window.loadPage = async function(page) {
         case 'startup': await window.loadStartup(content); break;
         case 'findings': await window.loadFindings(content); break;
         case 'ethics': await window.loadEthics(content); break;
+        case 'quality': await window.loadDataQuality(content); break;
         case 'center-detail': await window.loadCenterDetail(content); break;
     }
 };
