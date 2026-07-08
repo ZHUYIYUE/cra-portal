@@ -75,6 +75,167 @@ window.getEthicsGenerationWarnings = function(letter) {
 window.safeEthicsFileName = function(name) {
     return (name || '递交信').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
 };
+
+window.getEthicsLetterDraft = function() {
+    var getVal = function(id) {
+        var el = document.getElementById(id);
+        return el ? el.value.trim() : '';
+    };
+    var hasValue = function(value) {
+        return value !== undefined && value !== null && String(value).trim() !== '';
+    };
+    var projectId = getVal('el_project');
+    var centerId = getVal('el_center');
+    var project = window._ethicsCurrentProject || (window._ethicsProjects || []).find(function(p) { return p.id === projectId; }) || {};
+    var center = window._ethicsCurrentCenter || (window._ethicsCenters || []).find(function(c) { return c.id === centerId; }) || {};
+    var items = [];
+    document.querySelectorAll('#ethicsDocList > div').forEach(function(row) {
+        var docType = row.querySelector('.ed-doc-type').value;
+        var docName = row.querySelector('.ed-doc-name').value.trim();
+        var version = row.querySelector('.ed-version').value.trim();
+        var versionDate = row.querySelector('.ed-version-date').value;
+        var copies = parseInt(row.querySelector('.ed-copies').value) || 1;
+        if (docType || docName || version || versionDate) {
+            items.push({
+                doc_type: docType,
+                doc_name: docName,
+                version: version,
+                version_date: versionDate,
+                copies: copies,
+                notes: ''
+            });
+        }
+    });
+    return {
+        letter_type: getVal('el_letter_type') || 'CRA_to_PI',
+        project_id: projectId,
+        center_id: centerId,
+        project_name: project.name || '',
+        project_code: project.code || '',
+        project_full_name: project.full_name || project.name || '',
+        approval_number: project.approval_number || '',
+        sponsor: project.sponsor || '',
+        cro_name: project.cro_name || '',
+        center_name: [center.code, center.name].filter(hasValue).join(' '),
+        center_code: center.code || '',
+        pi_name: center.pi_name || '',
+        pi_phone: center.pi_phone || '',
+        contact_ethics: center.contact_ethics || '',
+        ethics_committee: getVal('el_ethics_committee') || center.ethics_committee_name || '',
+        submission_date: getVal('el_submission_date'),
+        submitter_name: getVal('el_submitter_name'),
+        submitter_phone: getVal('el_submitter_phone'),
+        submit_method: getVal('el_submit_method'),
+        tracking_number: getVal('el_tracking_number'),
+        notes: getVal('el_notes'),
+        items: items
+    };
+};
+
+window.getEthicsLetterCompleteness = function(draft) {
+    var errors = [];
+    var warnings = [];
+    var templates = window._ethicsLetterTemplates || [];
+    var hasTypeTemplate = templates.some(function(t) { return (t.letter_type || 'CRA_to_PI') === draft.letter_type; });
+    if (!draft.project_id) errors.push('请选择项目');
+    if (!draft.center_id) errors.push('请选择中心');
+    if (!draft.submission_date) errors.push('请填写递交日期');
+    if (!draft.items.length) errors.push('请至少添加一个递交文件');
+    if (draft.letter_type === 'PI_to_Ethics' && !draft.ethics_committee) errors.push('PI致伦理递交信需要填写伦理委员会名称');
+    draft.items.forEach(function(item, idx) {
+        if (!item.doc_name) errors.push('第 ' + (idx + 1) + ' 个文件缺少文件名称');
+        if (!item.version) warnings.push('第 ' + (idx + 1) + ' 个文件缺少版本号');
+    });
+    if (!hasTypeTemplate) warnings.push('当前递交信类型还没有可用模板');
+    if (!draft.project_full_name) warnings.push('项目全称为空，Word 中 {project_full_name} 会留空');
+    if (!draft.project_code) warnings.push('方案编号为空，Word 中 {project_code} 会留空');
+    if (!draft.approval_number) warnings.push('通知书/批件编号为空，Word 中 {approval_number} 会留空');
+    if (!draft.sponsor) warnings.push('申办方为空，Word 中 {sponsor} 会留空');
+    if (!draft.center_name) warnings.push('中心名称为空，Word 中 {center_name} 会留空');
+    if (draft.letter_type === 'CRA_to_PI' && !draft.pi_name) warnings.push('PI 姓名为空，CRA 致 PI 递交信可能不完整');
+    return { errors: errors, warnings: warnings };
+};
+
+window.renderEthicsLetterPreview = function() {
+    var target = document.getElementById('ethicsLetterPreview');
+    if (!target) return;
+    var draft = window.getEthicsLetterDraft();
+    var check = window.getEthicsLetterCompleteness(draft);
+    var typeLabel = window.ETHICS_LETTER_TYPES[draft.letter_type] || draft.letter_type;
+    var docsHtml = draft.items.length ? draft.items.map(function(item, idx) {
+        return '<tr><td>' + (idx + 1) + '</td><td>' + window.escHtml(item.doc_type || '-') + '</td><td>' + window.escHtml(item.doc_name || '-') + '</td><td>' + window.escHtml(item.version || '-') + '</td><td>' + (item.version_date || '-') + '</td><td>' + (item.copies || 1) + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" class="el-empty-cell">尚未添加文件</td></tr>';
+    var list = function(items, tone) {
+        if (!items.length) return '';
+        return '<div class="el-check ' + tone + '"><strong>' + (tone === 'danger' ? '必须补齐' : '建议确认') + '</strong><ul>' + items.map(function(text) { return '<li>' + window.escHtml(text) + '</li>'; }).join('') + '</ul></div>';
+    };
+    target.innerHTML = `
+        <div class="el-preview-grid">
+            <div><span>递交信类型</span><strong>${window.escHtml(typeLabel)}</strong></div>
+            <div><span>项目</span><strong>${window.escHtml(draft.project_name || '-')}</strong></div>
+            <div><span>中心</span><strong>${window.escHtml(draft.center_name || '-')}</strong></div>
+            <div><span>递交日期</span><strong>${draft.submission_date || '-'}</strong></div>
+            <div><span>递交人</span><strong>${window.escHtml(draft.submitter_name || '-')}</strong></div>
+            <div><span>递交方式</span><strong>${window.escHtml(draft.submit_method || '-')}</strong></div>
+            <div><span>伦理委员会</span><strong>${window.escHtml(draft.ethics_committee || '-')}</strong></div>
+            <div><span>文件数量</span><strong>${draft.items.length} 份</strong></div>
+        </div>
+        ${list(check.errors, 'danger')}
+        ${list(check.warnings, 'warning')}
+        <div class="el-preview-docs">
+            <table>
+                <thead><tr><th>#</th><th>类型</th><th>文件名称</th><th>版本</th><th>版本日期</th><th>份数</th></tr></thead>
+                <tbody>${docsHtml}</tbody>
+            </table>
+        </div>
+    `;
+};
+
+window.refreshEthicsLetterPreview = function() {
+    setTimeout(window.renderEthicsLetterPreview, 0);
+};
+
+window.switchEthicsLetterStep = function(step) {
+    var current = Math.max(1, Math.min(3, step));
+    document.querySelectorAll('.el-step').forEach(function(el) {
+        el.classList.toggle('active', parseInt(el.dataset.step) === current);
+    });
+    document.querySelectorAll('.el-step-pane').forEach(function(el) {
+        el.classList.toggle('active', parseInt(el.dataset.step) === current);
+    });
+    var prev = document.getElementById('elPrevBtn');
+    var next = document.getElementById('elNextBtn');
+    var save = document.getElementById('elSaveBtn');
+    var generate = document.getElementById('elGenerateBtn');
+    if (prev) prev.style.display = current === 1 ? 'none' : '';
+    if (next) next.style.display = current === 3 ? 'none' : '';
+    if (save) save.style.display = current === 3 ? '' : 'none';
+    if (generate) generate.style.display = current === 3 ? '' : 'none';
+    window._ethicsLetterStep = current;
+    window.renderEthicsLetterPreview();
+};
+
+window.nextEthicsLetterStep = function() {
+    var step = window._ethicsLetterStep || 1;
+    var draft = window.getEthicsLetterDraft();
+    if (step === 1) {
+        var missing = [];
+        if (!draft.project_id) missing.push('请选择项目');
+        if (!draft.center_id) missing.push('请选择中心');
+        if (!draft.submission_date) missing.push('请填写递交日期');
+        if (draft.letter_type === 'PI_to_Ethics' && !draft.ethics_committee) missing.push('PI致伦理递交信需要填写伦理委员会名称');
+        if (missing.length) { alert(missing.join('\n')); return; }
+    }
+    if (step === 2 && !draft.items.length) {
+        alert('请至少添加一个递交文件');
+        return;
+    }
+    window.switchEthicsLetterStep(step + 1);
+};
+
+window.prevEthicsLetterStep = function() {
+    window.switchEthicsLetterStep((window._ethicsLetterStep || 1) - 1);
+};
 // ========== 伦理递交页面 ==========
 
 window.loadEthics = async function(content) {
@@ -172,9 +333,15 @@ window.openEthicsLetterForm = async function(editId) {
         if (res.success) editData = res.letter;
     }
 
-    var [projData, centerData] = await Promise.all([api.getProjects(), api.getCenters()]);
+    var [projData, centerData, tmplData] = await Promise.all([api.getProjects(), api.getCenters(), api.getEthicsTemplates()]);
     var projects = projData.projects || [];
     var centers = centerData.centers || [];
+    var templates = tmplData.templates || [];
+    window._ethicsProjects = projects;
+    window._ethicsCenters = centers;
+    window._ethicsLetterTemplates = templates;
+    window._ethicsCurrentProject = null;
+    window._ethicsCurrentCenter = null;
 
     var projOpts = projects.map(function(p) {
         return '<option value="' + p.id + '"' + (editData && editData.project_id === p.id ? ' selected' : '') + '>' + window.escHtml(p.name) + '</option>';
@@ -185,93 +352,134 @@ window.openEthicsLetterForm = async function(editId) {
 
     window.openModal(`
         <h3><i class="fas fa-file-plus" style="color:#3498db;"></i> ${editId ? '编辑递交信' : '新建递交信'}</h3>
-        <form id="ethicsLetterForm" onsubmit="return window.submitEthicsLetter(event, '${editId || ''}')" style="display:grid;gap:12px;max-width:800px;">
-            <div class="form-row">
-                <div class="form-group">
-                    <label>递交信类型 *</label>
-                    <select id="el_letter_type" required onchange="window.onLetterTypeChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                        <option value="CRA_to_PI" ${currentLetterType === 'CRA_to_PI' ? 'selected' : ''}>CRA致PI递交信</option>
-                        <option value="PI_to_Ethics" ${currentLetterType === 'PI_to_Ethics' ? 'selected' : ''}>PI致伦理递交信</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>项目 *</label>
-                    <select id="el_project" required onchange="window.onEthicsProjectChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                        <option value="">请选择</option>${projOpts}
-                    </select>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>中心 *</label>
-                    <select id="el_center" required onchange="window.onEthicsCenterChange()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                        <option value="">请选择</option>
-                    </select>
-                </div>
-                <div class="form-group"><label>递交日期 *</label><input type="date" id="el_submission_date" required value="${editData ? editData.submission_date : today}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
+        <form id="ethicsLetterForm" class="ethics-letter-form" onsubmit="return window.submitEthicsLetter(event, '${editId || ''}')" oninput="window.refreshEthicsLetterPreview()" onchange="window.refreshEthicsLetterPreview()">
+            <div class="el-steps">
+                <button type="button" class="el-step active" data-step="1" onclick="window.switchEthicsLetterStep(1)"><span>1</span>基本信息</button>
+                <button type="button" class="el-step" data-step="2" onclick="window.switchEthicsLetterStep(2)"><span>2</span>文件清单</button>
+                <button type="button" class="el-step" data-step="3" onclick="window.switchEthicsLetterStep(3)"><span>3</span>生成预览</button>
             </div>
 
-            <!-- 项目信息预览 -->
-            <div id="projectInfoPreview" style="background:#f0f7ff;border:1px solid #bee5eb;border-radius:8px;padding:10px;font-size:13px;display:none;">
-                <div id="projectInfoContent"></div>
-            </div>
-
-            <div class="form-row">
-                <div class="form-group"><label>递交人</label><input type="text" id="el_submitter_name" value="${editData ? window.escAttr(editData.submitter_name || '') : ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
-                <div class="form-group"><label>递交人电话</label><input type="text" id="el_submitter_phone" value="${editData ? window.escAttr(editData.submitter_phone || '') : ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>递交方式</label>
-                    <select id="el_submit_method" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                        ${window.ETHICS_SUBMIT_METHODS.map(function(m) {
-                            return '<option value="' + m + '"' + (editData && editData.submit_method === m ? ' selected' : '') + '>' + m + '</option>';
-                        }).join('')}
-                    </select>
+            <div class="el-step-pane active" data-step="1">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>递交信类型 *</label>
+                        <select id="el_letter_type" required onchange="window.onLetterTypeChange();window.refreshEthicsLetterPreview();">
+                            <option value="CRA_to_PI" ${currentLetterType === 'CRA_to_PI' ? 'selected' : ''}>CRA致PI递交信</option>
+                            <option value="PI_to_Ethics" ${currentLetterType === 'PI_to_Ethics' ? 'selected' : ''}>PI致伦理递交信</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>项目 *</label>
+                        <select id="el_project" required onchange="window.onEthicsProjectChange()">
+                            <option value="">请选择</option>${projOpts}
+                        </select>
+                    </div>
                 </div>
-                <div class="form-group"><label>快递单号</label><input type="text" id="el_tracking_number" value="${editData ? window.escAttr(editData.tracking_number || '') : ''}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;"></div>
-            </div>
-            <div class="form-group">
-                <label>伦理委员会名称</label>
-                <input type="text" id="el_ethics_committee" value="${editData ? window.escAttr(editData.ethics_committee || '') : ''}" placeholder="如：广州医科大学附属第二医院临床试验伦理委员会" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;">
-                <small style="color:#999;">PI致伦理递交信必填，选择中心后可自动填充</small>
-            </div>
-            <div class="form-group"><label>备注</label><textarea id="el_notes" rows="2" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;">${editData ? window.escAttr(editData.notes || '') : ''}</textarea></div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>中心 *</label>
+                        <select id="el_center" required onchange="window.onEthicsCenterChange(true)">
+                            <option value="">请选择</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>递交日期 *</label><input type="date" id="el_submission_date" required value="${editData ? editData.submission_date : today}"></div>
+                </div>
 
-            <div style="border-top:1px solid #eee;padding-top:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                    <strong>递交文件清单</strong>
-                    <button type="button" class="btn btn-sm btn-outline" onclick="window.addEthicsDocRow()">
+                <div id="projectInfoPreview" class="el-project-preview" style="display:none;">
+                    <div id="projectInfoContent"></div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group"><label>递交人</label><input type="text" id="el_submitter_name" value="${editData ? window.escAttr(editData.submitter_name || '') : ''}"></div>
+                    <div class="form-group"><label>递交人电话</label><input type="text" id="el_submitter_phone" value="${editData ? window.escAttr(editData.submitter_phone || '') : ''}"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>递交方式</label>
+                        <select id="el_submit_method">
+                            ${window.ETHICS_SUBMIT_METHODS.map(function(m) {
+                                return '<option value="' + m + '"' + (editData && editData.submit_method === m ? ' selected' : '') + '>' + m + '</option>';
+                            }).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group"><label>快递单号</label><input type="text" id="el_tracking_number" value="${editData ? window.escAttr(editData.tracking_number || '') : ''}"></div>
+                </div>
+                <div class="form-group">
+                    <label>伦理委员会名称</label>
+                    <input type="text" id="el_ethics_committee" value="${editData ? window.escAttr(editData.ethics_committee || '') : ''}" placeholder="如：广州医科大学附属第二医院临床试验伦理委员会">
+                    <small style="color:#999;">PI致伦理递交信必填，选择中心后可自动填充</small>
+                </div>
+                <div class="form-group"><label>备注</label><textarea id="el_notes" rows="2">${editData ? window.escAttr(editData.notes || '') : ''}</textarea></div>
+            </div>
+
+            <div class="el-step-pane" data-step="2">
+                <div class="el-pane-head">
+                    <div>
+                        <strong>递交文件清单</strong>
+                        <span>维护文件名称、版本、版本日期和份数</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="window.addEthicsDocRow();window.refreshEthicsLetterPreview();">
                         <i class="fas fa-plus"></i> 添加文件
                     </button>
                 </div>
-                <div id="ethicsDocList" style="display:grid;gap:8px;"></div>
+                <div id="ethicsDocList" class="ethics-doc-list"></div>
             </div>
 
-            <div style="text-align:right;margin-top:8px;">
+            <div class="el-step-pane" data-step="3">
+                <div class="el-pane-head">
+                    <div>
+                        <strong>生成预览</strong>
+                        <span>保存前确认信息完整性和 Word 输出内容</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline" onclick="window.showPlaceholderHelp()">
+                        <i class="fas fa-question-circle"></i> 占位符
+                    </button>
+                </div>
+                <div id="ethicsLetterPreview"></div>
+            </div>
+
+            <div class="el-form-actions">
                 <button type="button" class="btn btn-text" onclick="window.closeModal()">取消</button>
-                <button type="submit" class="btn btn-outline" data-action="save" onclick="window._ethicsSubmitAction='save'">保存</button>
-                <button type="submit" class="btn btn-primary" data-action="generate" onclick="window._ethicsSubmitAction='generate'"><i class="fas fa-file-word"></i> 保存并生成Word</button>
+                <button type="button" id="elPrevBtn" class="btn btn-outline" onclick="window.prevEthicsLetterStep()" style="display:none;"><i class="fas fa-arrow-left"></i> 上一步</button>
+                <button type="button" id="elNextBtn" class="btn btn-primary" onclick="window.nextEthicsLetterStep()">下一步 <i class="fas fa-arrow-right"></i></button>
+                <button type="submit" id="elSaveBtn" class="btn btn-outline" data-action="save" onclick="window._ethicsSubmitAction='save'" style="display:none;">保存</button>
+                <button type="submit" id="elGenerateBtn" class="btn btn-primary" data-action="generate" onclick="window._ethicsSubmitAction='generate'" style="display:none;"><i class="fas fa-file-word"></i> 保存并生成Word</button>
             </div>
         </form>
     `);
+    var modal = document.getElementById('modalContent');
+    if (modal) modal.classList.add('ethics-letter-modal');
 
     if (editData) {
-        window._ethicsEditItems = editData.items || [];
-        window.onEthicsProjectChange(editData.center_id);
+        await window.onEthicsProjectChange(editData.center_id);
+        var editItems = editData.items || [];
+        if (editItems.length) {
+            editItems.forEach(function(item) { window.addEthicsDocRow(item); });
+        } else {
+            window.addEthicsDocRow();
+        }
     } else {
-        window._ethicsEditItems = null;
         window.addEthicsDocRow();
     }
+    window.switchEthicsLetterStep(1);
+    window.refreshEthicsLetterPreview();
 };
 
 // 选择项目后显示项目信息预览
 window.onEthicsProjectChange = async function(selectedCenterId) {
     var projId = document.getElementById('el_project').value;
-    if (!projId) return;
+    window._ethicsCurrentProject = null;
+    window._ethicsCurrentCenter = null;
+    if (!projId) {
+        var emptySel = document.getElementById('el_center');
+        if (emptySel) emptySel.innerHTML = '<option value="">请选择</option>';
+        window.refreshEthicsLetterPreview();
+        return;
+    }
 
     var centerData = await api.getCenters(projId);
     var centers = centerData.centers || [];
+    window._ethicsCenters = centers;
     var sel = document.getElementById('el_center');
     sel.innerHTML = '<option value="">请选择</option>' + centers.map(function(c) {
         var label = ((c.code || '') + ' ' + (c.name || '')).trim();
@@ -283,6 +491,7 @@ window.onEthicsProjectChange = async function(selectedCenterId) {
     var projData = await api.getProject(projId);
     if (projData.success) {
         var p = projData;
+        window._ethicsCurrentProject = p;
         var preview = document.getElementById('projectInfoPreview');
         var content = document.getElementById('projectInfoContent');
         if (p.full_name || p.approval_number || p.sponsor || p.cro_name) {
@@ -301,23 +510,32 @@ window.onEthicsProjectChange = async function(selectedCenterId) {
             preview.style.display = 'none';
         }
     }
+    if (selectedCenterId) await window.onEthicsCenterChange(false);
+    window.refreshEthicsLetterPreview();
 };
 
 // 选择中心后自动填充伦理委员会名称
-window.onEthicsCenterChange = async function() {
+window.onEthicsCenterChange = async function(forceFillEthics) {
     var centerId = document.getElementById('el_center').value;
-    if (!centerId) return;
+    window._ethicsCurrentCenter = null;
+    if (!centerId) {
+        window.refreshEthicsLetterPreview();
+        return;
+    }
     var centerData = await api.getCenter(centerId);
     if (centerData.success && centerData.center) {
         var c = centerData.center;
-        if (c.ethics_committee_name) {
-            document.getElementById('el_ethics_committee').value = c.ethics_committee_name;
+        window._ethicsCurrentCenter = c;
+        var ethicsInput = document.getElementById('el_ethics_committee');
+        if (c.ethics_committee_name && ethicsInput && (forceFillEthics || !ethicsInput.value.trim())) {
+            ethicsInput.value = c.ethics_committee_name;
         }
     }
+    window.refreshEthicsLetterPreview();
 };
 
 window.onLetterTypeChange = function() {
-    // 可根据类型调整UI，目前不需要特殊处理
+    window.refreshEthicsLetterPreview();
 };
 
 window._ethicsDocRowId = 0;
@@ -333,63 +551,33 @@ window.addEthicsDocRow = function(data) {
     var container = document.getElementById('ethicsDocList');
     var div = document.createElement('div');
     div.id = rowId;
-    div.style.cssText = 'display:grid;grid-template-columns:2fr 3fr 80px 100px 60px 30px;gap:6px;align-items:center;';
+    div.className = 'ethics-doc-row';
     div.innerHTML = `
-        <select class="ed-doc-type" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+        <select class="ed-doc-type" onchange="window.refreshEthicsLetterPreview()">
             <option value="">类型</option>${typeOpts}
         </select>
-        <input type="text" class="ed-doc-name" placeholder="文件名称（如：临床试验方案）" value="${window.escAttr(d.doc_name || '')}" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
-        <input type="text" class="ed-version" placeholder="版本号" value="${window.escAttr(d.version || '')}" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
-        <input type="date" class="ed-version-date" value="${d.version_date || ''}" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
-        <input type="number" class="ed-copies" placeholder="份" value="${d.copies || 1}" min="1" style="padding:6px;border:1px solid #ddd;border-radius:4px;font-size:13px;text-align:center;">
-        <button type="button" onclick="document.getElementById('${rowId}').remove()" style="border:none;background:none;color:#e74c3c;cursor:pointer;font-size:16px;padding:4px;">×</button>
+        <input type="text" class="ed-doc-name" placeholder="文件名称（如：临床试验方案）" value="${window.escAttr(d.doc_name || '')}">
+        <input type="text" class="ed-version" placeholder="版本号" value="${window.escAttr(d.version || '')}">
+        <input type="date" class="ed-version-date" value="${d.version_date || ''}">
+        <input type="number" class="ed-copies" placeholder="份" value="${d.copies || 1}" min="1">
+        <button type="button" class="ed-remove" onclick="document.getElementById('${rowId}').remove();window.refreshEthicsLetterPreview();" title="删除文件"><i class="fas fa-times"></i></button>
     `;
     container.appendChild(div);
 
     if (d.doc_type) {
         div.querySelector('.ed-doc-type').value = d.doc_type;
     }
+    window.refreshEthicsLetterPreview();
 };
 
 window.submitEthicsLetter = async function(e, editId) {
     e.preventDefault();
-    var data = {
-        letter_type: document.getElementById('el_letter_type').value,
-        project_id: document.getElementById('el_project').value,
-        center_id: document.getElementById('el_center').value,
-        submission_date: document.getElementById('el_submission_date').value,
-        submitter_name: document.getElementById('el_submitter_name').value.trim(),
-        submitter_phone: document.getElementById('el_submitter_phone').value.trim(),
-        submit_method: document.getElementById('el_submit_method').value,
-        tracking_number: document.getElementById('el_tracking_number').value.trim(),
-        ethics_committee: document.getElementById('el_ethics_committee').value.trim(),
-        notes: document.getElementById('el_notes').value.trim(),
-        items: []
-    };
+    var data = window.getEthicsLetterDraft();
+    var check = window.getEthicsLetterCompleteness(data);
 
-    var rows = document.querySelectorAll('#ethicsDocList > div');
-    rows.forEach(function(row) {
-        var docType = row.querySelector('.ed-doc-type').value;
-        var docName = row.querySelector('.ed-doc-name').value.trim();
-        if (docType || docName) {
-            data.items.push({
-                doc_type: docType,
-                doc_name: docName,
-                version: row.querySelector('.ed-version').value.trim(),
-                version_date: row.querySelector('.ed-version-date').value,
-                copies: parseInt(row.querySelector('.ed-copies').value) || 1,
-                notes: ''
-            });
-        }
-    });
-
-    if (data.items.length === 0) {
-        alert('请至少添加一个递交文件');
-        return;
-    }
-
-    if (data.letter_type === 'PI_to_Ethics' && !data.ethics_committee) {
-        alert('PI致伦理递交信需要填写伦理委员会名称');
+    if (check.errors.length > 0) {
+        alert('请先补齐以下信息：\n\n- ' + check.errors.join('\n- '));
+        window.switchEthicsLetterStep(check.errors.some(function(text) { return text.indexOf('文件') >= 0; }) ? 2 : 1);
         return;
     }
 
