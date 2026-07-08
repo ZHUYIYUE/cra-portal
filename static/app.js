@@ -276,7 +276,10 @@ window.highlightFinding = function(id) {
 window.openModal = function(html) {
     var modalContent = document.getElementById('modalContent');
     var modalOverlay = document.getElementById('modalOverlay');
-    if (modalContent) modalContent.innerHTML = html;
+    if (modalContent) {
+        modalContent.className = 'modal';
+        modalContent.innerHTML = html;
+    }
     if (modalOverlay) modalOverlay.classList.add('show');
 };
 
