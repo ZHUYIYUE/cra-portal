@@ -78,6 +78,11 @@ function _isMissingProjectDocumentsTable(err) {
     return /project_documents|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
 }
 
+function _isMissingEthicsPackagesTable(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /ethics_submission_packages|ethics_submission_package_items|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
+}
+
 function _stripTaskPlanningFields(data) {
     var copy = Object.assign({}, data);
     delete copy.estimated_minutes;
@@ -760,6 +765,168 @@ window.api = {
             };
         }).filter(Boolean);
         return { success: true, stats: stats };
+    },
+
+    // ===== 中心伦理递交包 =====
+
+    getEthicsSubmissionPackages: async function(filters) {
+        var params = { order: 'created_at.desc' };
+        if (filters) {
+            if (filters.project_id) params.project_id = 'eq.' + filters.project_id;
+            if (filters.center_id) params.center_id = 'eq.' + filters.center_id;
+        }
+        try {
+            var packages = await _select('ethics_submission_packages', params);
+            var [projects, centers, items] = await Promise.all([
+                _select('projects', { select: 'id,name,code' }),
+                _select('centers', { select: 'id,name,code,project_id,ethics_committee_name,pi_name' }),
+                _select('ethics_submission_package_items', { order: 'created_at.asc' })
+            ]);
+            var result = packages.map(function(pkg) {
+                var p = projects.find(function(x) { return x.id === pkg.project_id; });
+                var c = centers.find(function(x) { return x.id === pkg.center_id; });
+                var pkgItems = items.filter(function(it) { return it.package_id === pkg.id; });
+                return Object.assign({}, pkg, {
+                    project_name: p ? p.name : '',
+                    project_code: p ? p.code : '',
+                    center_name: c ? ((c.code || '') + ' ' + (c.name || '')).trim() : '',
+                    center_code: c ? c.code : '',
+                    ethics_committee: pkg.ethics_committee || (c ? (c.ethics_committee_name || '') : ''),
+                    pi_name: c ? (c.pi_name || '') : '',
+                    items: pkgItems
+                });
+            });
+            return { success: true, packages: result };
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: true, packages: [], missingTable: true };
+        }
+    },
+
+    getEthicsSubmissionPackage: async function(id) {
+        try {
+            var pkg = await _selectOne('ethics_submission_packages', id);
+            if (!pkg) return { success: false, error: '递交包不存在' };
+            var items = await _select('ethics_submission_package_items', { package_id: 'eq.' + id, order: 'created_at.asc' });
+            return { success: true, package: Object.assign({}, pkg, { items: items }) };
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: false, error: '递交包表尚未创建，请先执行 supabase/ethics_submission_packages.sql' };
+        }
+    },
+
+    createEthicsSubmissionPackage: async function(data) {
+        var id = _genId();
+        try {
+            await _insert('ethics_submission_packages', {
+                id: id,
+                project_id: data.project_id || '',
+                center_id: data.center_id || '',
+                package_name: data.package_name || '',
+                source_type: data.source_type || '项目文件更新',
+                received_date: data.received_date || '',
+                due_date: data.due_date || '',
+                review_type: data.review_type || '待确认',
+                status: data.status || '待准备',
+                cta_to_pi_status: data.cta_to_pi_status || '未生成',
+                pi_to_ec_status: data.pi_to_ec_status || '未生成',
+                sent_to_center_date: data.sent_to_center_date || '',
+                pi_signed_date: data.pi_signed_date || '',
+                ec_submitted_date: data.ec_submitted_date || '',
+                ec_received_date: data.ec_received_date || '',
+                approval_received_date: data.approval_received_date || '',
+                receipt_received_date: data.receipt_received_date || '',
+                payment_required: !!data.payment_required,
+                fee_status: data.fee_status || '不适用',
+                ethics_committee: data.ethics_committee || '',
+                notes: data.notes || '',
+                created_at: _now(),
+                updated_at: _now()
+            });
+            if (data.items && data.items.length) {
+                for (var i = 0; i < data.items.length; i++) {
+                    await _insert('ethics_submission_package_items', {
+                        id: _genId(),
+                        package_id: id,
+                        project_document_id: data.items[i].project_document_id || '',
+                        doc_category: data.items[i].doc_category || '',
+                        doc_name: data.items[i].doc_name || '',
+                        version: data.items[i].version || '',
+                        version_date: data.items[i].version_date || '',
+                        copies: data.items[i].copies || 1,
+                        created_at: _now()
+                    });
+                }
+            }
+            return { success: true, id: id };
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: false, error: '递交包表尚未创建，请先执行 supabase/ethics_submission_packages.sql' };
+        }
+    },
+
+    updateEthicsSubmissionPackage: async function(id, data) {
+        try {
+            await _update('ethics_submission_packages', id, {
+                project_id: data.project_id || '',
+                center_id: data.center_id || '',
+                package_name: data.package_name || '',
+                source_type: data.source_type || '项目文件更新',
+                received_date: data.received_date || '',
+                due_date: data.due_date || '',
+                review_type: data.review_type || '待确认',
+                status: data.status || '待准备',
+                cta_to_pi_status: data.cta_to_pi_status || '未生成',
+                pi_to_ec_status: data.pi_to_ec_status || '未生成',
+                sent_to_center_date: data.sent_to_center_date || '',
+                pi_signed_date: data.pi_signed_date || '',
+                ec_submitted_date: data.ec_submitted_date || '',
+                ec_received_date: data.ec_received_date || '',
+                approval_received_date: data.approval_received_date || '',
+                receipt_received_date: data.receipt_received_date || '',
+                payment_required: !!data.payment_required,
+                fee_status: data.fee_status || '不适用',
+                ethics_committee: data.ethics_committee || '',
+                notes: data.notes || '',
+                updated_at: _now()
+            });
+            if (data.items) {
+                var existing = await _select('ethics_submission_package_items', { package_id: 'eq.' + id });
+                for (var i = 0; i < existing.length; i++) {
+                    await _delete('ethics_submission_package_items', existing[i].id);
+                }
+                for (var j = 0; j < data.items.length; j++) {
+                    await _insert('ethics_submission_package_items', {
+                        id: _genId(),
+                        package_id: id,
+                        project_document_id: data.items[j].project_document_id || '',
+                        doc_category: data.items[j].doc_category || '',
+                        doc_name: data.items[j].doc_name || '',
+                        version: data.items[j].version || '',
+                        version_date: data.items[j].version_date || '',
+                        copies: data.items[j].copies || 1,
+                        created_at: _now()
+                    });
+                }
+            }
+            return { success: true };
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: false, error: '递交包表尚未创建，请先执行 supabase/ethics_submission_packages.sql' };
+        }
+    },
+
+    deleteEthicsSubmissionPackage: async function(id) {
+        try {
+            var items = await _select('ethics_submission_package_items', { package_id: 'eq.' + id });
+            for (var i = 0; i < items.length; i++) {
+                await _delete('ethics_submission_package_items', items[i].id);
+            }
+            return await _delete('ethics_submission_packages', id);
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: false, error: '递交包表尚未创建，请先执行 supabase/ethics_submission_packages.sql' };
+        }
     },
 
     // ===== 伦理递交信批次 =====

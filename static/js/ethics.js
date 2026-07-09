@@ -2,6 +2,10 @@
 
 window.ETHICS_DOC_TYPES = ['初始伦理', '修正案', '方案偏离报告', 'SAE报告', '年度报告', '结题报告', '备案类文件', '其他'];
 window.ETHICS_SUBMIT_METHODS = ['快递', '专人递交', '电子邮件', '在线系统'];
+window.ETHICS_PACKAGE_REVIEW_TYPES = ['待确认', '会审', '快审', '备案'];
+window.ETHICS_PACKAGE_STATUSES = ['待准备', 'CTA to PI已寄出', 'PI已签署', '已递交伦理', '伦理已签收', '审查中', '已完成'];
+window.ETHICS_LETTER_STATUS_OPTIONS = ['未生成', '已生成', '已打印', '已签署', '已寄出', '已签收'];
+window.ETHICS_FEE_STATUS_OPTIONS = ['不适用', '待缴费', '已申请', '已缴费', '待发票', '已收票'];
 window.ETHICS_LETTER_TYPES = {
     'CRA_to_PI': 'CRA致PI递交信',
     'PI_to_Ethics': 'PI致伦理递交信'
@@ -239,16 +243,20 @@ window.prevEthicsLetterStep = function() {
 // ========== 伦理递交页面 ==========
 
 window.loadEthics = async function(content) {
-    var [lettersData, templatesData] = await Promise.all([
-        api.getEthicsLetters(), api.getEthicsTemplates()
+    var [lettersData, templatesData, packagesData] = await Promise.all([
+        api.getEthicsLetters(), api.getEthicsTemplates(), api.getEthicsSubmissionPackages()
     ]);
     var letters = lettersData.letters || [];
     var templates = templatesData.templates || [];
+    var packages = packagesData.packages || [];
     var templateStatusHtml = window.getEthicsTemplateStatusHtml(templates);
 
     content.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn btn-primary" onclick="window.openEthicsPackageForm()">
+                    <i class="fas fa-layer-group"></i> 新建递交包
+                </button>
                 <button class="btn btn-primary" onclick="window.openEthicsLetterForm()">
                     <i class="fas fa-plus"></i> 新建递交信
                 </button>
@@ -265,6 +273,8 @@ window.loadEthics = async function(content) {
         </div>
 
         ${templateStatusHtml}
+
+        ${window.renderEthicsPackagesCard(packages, packagesData.missingTable)}
 
         <div class="card">
             <div class="card-header"><i class="fas fa-file-alt"></i> 递交信记录 (${letters.length})</div>
@@ -322,6 +332,419 @@ window.loadEthics = async function(content) {
             `}
         </div>
     `;
+};
+
+// ========== 中心递交包进度 ==========
+
+window.getEthicsPackageNextAction = function(pkg) {
+    if (pkg.status === '已完成') return '归档递交证据';
+    if (!pkg.sent_to_center_date) return '打印 CTA to PI 并寄给中心';
+    if (!pkg.pi_signed_date) return '跟进 PI 签署递交信';
+    if (!pkg.ec_submitted_date) return '确认 CRC/PI 递交伦理';
+    if (!pkg.ec_received_date) return '收集伦理签收证明';
+    if (pkg.review_type === '备案' && !pkg.receipt_received_date) return '收集备案受理回执/签收递交信';
+    if ((pkg.review_type === '会审' || pkg.review_type === '快审') && !pkg.approval_received_date) return '跟进伦理批件或意见函';
+    if (pkg.payment_required && pkg.fee_status !== '已收票') return '跟进伦理费缴费/发票';
+    return '确认递交包完成状态';
+};
+
+window.getEthicsPackageTone = function(pkg) {
+    var today = new Date().toISOString().split('T')[0];
+    if (pkg.status === '已完成') return 'ok';
+    if (pkg.due_date && pkg.due_date < today) return 'danger';
+    if (pkg.due_date) {
+        var days = Math.ceil((new Date(pkg.due_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000);
+        if (days <= 7) return 'warning';
+    }
+    return '';
+};
+
+window.renderEthicsPackagesCard = function(packages, missingTable) {
+    if (missingTable) {
+        return `
+            <div class="card ethics-package-card">
+                <div class="card-header"><i class="fas fa-layer-group"></i> 中心递交包进度</div>
+                <div class="ethics-package-empty warning">
+                    <i class="fas fa-database"></i>
+                    <div>
+                        <strong>递交包表尚未启用</strong>
+                        <span>请先执行 <code>supabase/ethics_submission_packages.sql</code>，再记录每家中心的递交进度。</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    var stats = packages.reduce(function(acc, pkg) {
+        if (pkg.status === '已完成') acc.done++;
+        else acc.open++;
+        if (window.getEthicsPackageTone(pkg) === 'danger') acc.overdue++;
+        if (pkg.payment_required && pkg.fee_status !== '已收票' && pkg.fee_status !== '不适用') acc.fee++;
+        return acc;
+    }, { open: 0, done: 0, overdue: 0, fee: 0 });
+    var rows = packages.length ? packages.map(function(pkg) {
+        var tone = window.getEthicsPackageTone(pkg);
+        return `
+            <tr>
+                <td>
+                    <div class="ethics-package-name">${window.escHtml(pkg.package_name || '未命名递交包')}</div>
+                    <small>${window.escHtml(pkg.project_name || '-')}</small>
+                </td>
+                <td>
+                    <div>${window.escHtml(pkg.center_name || '-')}</div>
+                    <small>${window.escHtml(pkg.ethics_committee || '')}</small>
+                </td>
+                <td><span class="ethics-package-status ${tone}">${window.escHtml(pkg.status || '待准备')}</span></td>
+                <td>${window.escHtml(pkg.review_type || '待确认')}</td>
+                <td>${pkg.due_date || '-'}</td>
+                <td>${(pkg.items || []).length} 份</td>
+                <td>
+                    <div>${window.escHtml(window.getEthicsPackageNextAction(pkg))}</div>
+                    ${pkg.payment_required ? '<small>费用：' + window.escHtml(pkg.fee_status || '待确认') + '</small>' : ''}
+                </td>
+                <td class="ethics-package-actions">
+                    <button class="btn btn-text btn-sm" onclick="window.viewEthicsPackage('${pkg.id}')" title="查看"><i class="fas fa-eye"></i></button>
+                    <button class="btn btn-text btn-sm" onclick="window.openEthicsPackageForm('${pkg.id}')" title="编辑"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-text btn-sm" onclick="window.deleteEthicsPackage('${pkg.id}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                </td>
+            </tr>
+        `;
+    }).join('') : `
+        <tr>
+            <td colspan="8" class="ethics-package-empty-cell">
+                暂无中心递交包。项目组发布新版方案、知情、药品手册等文件后，先建递交包，再按中心跟踪进度。
+            </td>
+        </tr>
+    `;
+    return `
+        <div class="card ethics-package-card">
+            <div class="card-header">
+                <i class="fas fa-layer-group"></i> 中心递交包进度
+                <button class="btn btn-primary btn-sm" onclick="window.openEthicsPackageForm()" style="margin-left:auto;">
+                    <i class="fas fa-plus"></i> 新建递交包
+                </button>
+            </div>
+            <div class="ethics-package-summary">
+                <div><strong>${stats.open}</strong><span>进行中</span></div>
+                <div class="${stats.overdue ? 'danger' : ''}"><strong>${stats.overdue}</strong><span>逾期</span></div>
+                <div><strong>${stats.done}</strong><span>已完成</span></div>
+                <div class="${stats.fee ? 'warning' : ''}"><strong>${stats.fee}</strong><span>费用待跟进</span></div>
+            </div>
+            <div class="ethics-package-table-wrap">
+                <table class="ethics-package-table">
+                    <thead>
+                        <tr>
+                            <th>递交包</th>
+                            <th>中心/伦理</th>
+                            <th>状态</th>
+                            <th>审查方式</th>
+                            <th>截止</th>
+                            <th>文件</th>
+                            <th>下一步</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+};
+
+window.openEthicsPackageForm = async function(editId) {
+    var editData = null;
+    if (editId) {
+        var pkgRes = await api.getEthicsSubmissionPackage(editId);
+        if (!pkgRes.success) { alert(pkgRes.error || '递交包加载失败'); return; }
+        editData = pkgRes.package;
+    }
+    var projData = await api.getProjects();
+    var projects = projData.projects || [];
+    window._ethicsPackageSelectedItems = editData ? (editData.items || []) : [];
+
+    var opt = function(list, value) {
+        return list.map(function(x) {
+            return '<option value="' + x + '"' + (value === x ? ' selected' : '') + '>' + x + '</option>';
+        }).join('');
+    };
+    var projectOptions = projects.map(function(p) {
+        return '<option value="' + p.id + '"' + (editData && editData.project_id === p.id ? ' selected' : '') + '>' + window.escHtml(p.name || p.code || '未命名项目') + '</option>';
+    }).join('');
+    var today = new Date().toISOString().split('T')[0];
+    var title = editData ? '编辑中心递交包' : '新建中心递交包';
+    window.openModal(`
+        <div class="modal-header"><h3><i class="fas fa-layer-group"></i> ${title}</h3></div>
+        <form id="ethicsPackageForm" class="ethics-package-form" onsubmit="return window.submitEthicsPackage(event, '${editId || ''}')">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>项目 *</label>
+                    <select id="ep_project" required onchange="window.onEthicsPackageProjectChange()">
+                        <option value="">请选择</option>${projectOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>中心 *</label>
+                    <select id="ep_center" required onchange="window.onEthicsPackageCenterChange()">
+                        <option value="">请选择</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>递交包名称 *</label>
+                    <input type="text" id="ep_package_name" required value="${editData ? window.escAttr(editData.package_name || '') : ''}" placeholder="例：方案V3.0/知情V4.0递交">
+                </div>
+                <div class="form-group">
+                    <label>来源类型</label>
+                    <input type="text" id="ep_source_type" value="${editData ? window.escAttr(editData.source_type || '项目文件更新') : '项目文件更新'}">
+                </div>
+            </div>
+
+            <div class="ethics-package-doc-picker">
+                <div class="ep-section-title"><strong>递交文件清单</strong><span>从项目文件库选择，保存时会记录当前版本快照</span></div>
+                <div id="ep_project_documents" class="ep-doc-list">请选择项目后加载文件</div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group"><label>项目组接收日期</label><input type="date" id="ep_received_date" value="${editData ? (editData.received_date || '') : today}"></div>
+                <div class="form-group"><label>递交截止日期</label><input type="date" id="ep_due_date" value="${editData ? (editData.due_date || '') : ''}"></div>
+                <div class="form-group">
+                    <label>审查方式</label>
+                    <select id="ep_review_type">${opt(window.ETHICS_PACKAGE_REVIEW_TYPES, editData ? editData.review_type : '待确认')}</select>
+                </div>
+                <div class="form-group">
+                    <label>流程状态</label>
+                    <select id="ep_status">${opt(window.ETHICS_PACKAGE_STATUSES, editData ? editData.status : '待准备')}</select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>CTA to PI</label>
+                    <select id="ep_cta_to_pi_status">${opt(window.ETHICS_LETTER_STATUS_OPTIONS, editData ? editData.cta_to_pi_status : '未生成')}</select>
+                </div>
+                <div class="form-group">
+                    <label>PI to EC</label>
+                    <select id="ep_pi_to_ec_status">${opt(window.ETHICS_LETTER_STATUS_OPTIONS, editData ? editData.pi_to_ec_status : '未生成')}</select>
+                </div>
+                <div class="form-group"><label>寄给中心日期</label><input type="date" id="ep_sent_to_center_date" value="${editData ? (editData.sent_to_center_date || '') : ''}"></div>
+                <div class="form-group"><label>PI签署日期</label><input type="date" id="ep_pi_signed_date" value="${editData ? (editData.pi_signed_date || '') : ''}"></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label>递交伦理日期</label><input type="date" id="ep_ec_submitted_date" value="${editData ? (editData.ec_submitted_date || '') : ''}"></div>
+                <div class="form-group"><label>伦理签收日期</label><input type="date" id="ep_ec_received_date" value="${editData ? (editData.ec_received_date || '') : ''}"></div>
+                <div class="form-group"><label>批件/意见函日期</label><input type="date" id="ep_approval_received_date" value="${editData ? (editData.approval_received_date || '') : ''}"></div>
+                <div class="form-group"><label>备案回执日期</label><input type="date" id="ep_receipt_received_date" value="${editData ? (editData.receipt_received_date || '') : ''}"></div>
+            </div>
+            <div class="project-doc-checks">
+                <label><input type="checkbox" id="ep_payment_required" ${editData && editData.payment_required ? 'checked' : ''} onchange="window.toggleEthicsPackageFeeFields(this.checked)"> 会审/快审需要缴费</label>
+            </div>
+            <div id="ep_fee_fields" class="project-doc-training-fields" style="${editData && editData.payment_required ? '' : 'display:none;'}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>费用状态</label>
+                        <select id="ep_fee_status">${opt(window.ETHICS_FEE_STATUS_OPTIONS, editData ? editData.fee_status : '待缴费')}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>伦理委员会名称</label>
+                        <input type="text" id="ep_ethics_committee" value="${editData ? window.escAttr(editData.ethics_committee || '') : ''}">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <textarea id="ep_notes" rows="3" placeholder="递交特殊要求、回执位置、费用说明等">${editData ? window.escAttr(editData.notes || '') : ''}</textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> 保存递交包</button>
+                <button type="button" class="btn" onclick="window.closeModal()">取消</button>
+            </div>
+        </form>
+    `);
+    var modal = document.getElementById('modalContent');
+    if (modal) modal.classList.add('ethics-package-modal');
+    if (editData && editData.project_id) await window.onEthicsPackageProjectChange(editData.center_id);
+};
+
+window.onEthicsPackageProjectChange = async function(selectedCenterId) {
+    var projectId = document.getElementById('ep_project').value;
+    var centerSel = document.getElementById('ep_center');
+    var docBox = document.getElementById('ep_project_documents');
+    if (!projectId) {
+        if (centerSel) centerSel.innerHTML = '<option value="">请选择</option>';
+        if (docBox) docBox.innerHTML = '请选择项目后加载文件';
+        return;
+    }
+    var [centerData, docData] = await Promise.all([
+        api.getCenters(projectId),
+        api.getProjectDocuments(projectId)
+    ]);
+    var centers = centerData.centers || [];
+    if (centerSel) {
+        centerSel.innerHTML = '<option value="">请选择</option>' + centers.map(function(c) {
+            var label = ((c.code || '') + ' ' + (c.name || '')).trim();
+            return '<option value="' + c.id + '"' + (selectedCenterId === c.id ? ' selected' : '') + '>' + window.escHtml(label) + '</option>';
+        }).join('');
+    }
+    window.renderEthicsPackageDocumentPicker(docData.documents || [], window._ethicsPackageSelectedItems || []);
+    if (selectedCenterId) window.onEthicsPackageCenterChange();
+};
+
+window.onEthicsPackageCenterChange = async function() {
+    var centerId = document.getElementById('ep_center').value;
+    var ethicsInput = document.getElementById('ep_ethics_committee');
+    if (!centerId || !ethicsInput || ethicsInput.value.trim()) return;
+    var centerRes = await api.getCenter(centerId);
+    if (centerRes.success && centerRes.center && centerRes.center.ethics_committee_name) {
+        ethicsInput.value = centerRes.center.ethics_committee_name;
+    }
+};
+
+window.renderEthicsPackageDocumentPicker = function(documents, selectedItems) {
+    var docBox = document.getElementById('ep_project_documents');
+    if (!docBox) return;
+    var selectedMap = {};
+    (selectedItems || []).forEach(function(item) {
+        if (item.project_document_id) selectedMap[item.project_document_id] = item;
+    });
+    if (!documents.length) {
+        docBox.innerHTML = '<div class="ep-doc-empty">该项目暂无项目文件。请先到项目详情页登记方案/知情/手册等项目文件。</div>';
+        return;
+    }
+    var sorted = documents.slice().sort(function(a, b) {
+        if (!!b.requires_ethics_submission !== !!a.requires_ethics_submission) return b.requires_ethics_submission ? 1 : -1;
+        return (b.received_date || b.version_date || '') > (a.received_date || a.version_date || '') ? 1 : -1;
+    });
+    docBox.innerHTML = sorted.map(function(doc) {
+        var selected = selectedMap[doc.id] || (!selectedItems.length && doc.requires_ethics_submission);
+        var item = selectedMap[doc.id] || {};
+        return `
+            <label class="ep-doc-option">
+                <input type="checkbox" class="ep-doc-check" data-doc-id="${doc.id}"
+                    data-category="${window.escAttr(doc.doc_category || '')}"
+                    data-name="${window.escAttr(doc.doc_name || '')}"
+                    data-version="${window.escAttr(doc.version || '')}"
+                    data-version-date="${doc.version_date || ''}"
+                    ${selected ? 'checked' : ''}>
+                <span>
+                    <strong>${window.escHtml(doc.doc_name || '未命名文件')}</strong>
+                    <small>${window.escHtml(doc.doc_category || '未分类')} · ${window.escHtml(doc.version || '无版本')} ${doc.version_date ? '· ' + doc.version_date : ''}</small>
+                </span>
+                <input type="number" class="ep-doc-copies" min="1" value="${item.copies || 1}" title="份数">
+            </label>
+        `;
+    }).join('');
+};
+
+window.toggleEthicsPackageFeeFields = function(checked) {
+    var el = document.getElementById('ep_fee_fields');
+    if (el) el.style.display = checked ? '' : 'none';
+};
+
+window.collectEthicsPackageData = function() {
+    var checkedDocs = Array.from(document.querySelectorAll('.ep-doc-check:checked')).map(function(chk) {
+        var row = chk.closest('.ep-doc-option');
+        var copies = row ? parseInt(row.querySelector('.ep-doc-copies').value, 10) : 1;
+        return {
+            project_document_id: chk.dataset.docId || '',
+            doc_category: chk.dataset.category || '',
+            doc_name: chk.dataset.name || '',
+            version: chk.dataset.version || '',
+            version_date: chk.dataset.versionDate || '',
+            copies: copies || 1
+        };
+    });
+    var paymentRequired = !!document.getElementById('ep_payment_required').checked;
+    return {
+        project_id: document.getElementById('ep_project').value,
+        center_id: document.getElementById('ep_center').value,
+        package_name: document.getElementById('ep_package_name').value.trim(),
+        source_type: document.getElementById('ep_source_type').value.trim(),
+        received_date: document.getElementById('ep_received_date').value,
+        due_date: document.getElementById('ep_due_date').value,
+        review_type: document.getElementById('ep_review_type').value,
+        status: document.getElementById('ep_status').value,
+        cta_to_pi_status: document.getElementById('ep_cta_to_pi_status').value,
+        pi_to_ec_status: document.getElementById('ep_pi_to_ec_status').value,
+        sent_to_center_date: document.getElementById('ep_sent_to_center_date').value,
+        pi_signed_date: document.getElementById('ep_pi_signed_date').value,
+        ec_submitted_date: document.getElementById('ep_ec_submitted_date').value,
+        ec_received_date: document.getElementById('ep_ec_received_date').value,
+        approval_received_date: document.getElementById('ep_approval_received_date').value,
+        receipt_received_date: document.getElementById('ep_receipt_received_date').value,
+        payment_required: paymentRequired,
+        fee_status: paymentRequired ? document.getElementById('ep_fee_status').value : '不适用',
+        ethics_committee: document.getElementById('ep_ethics_committee').value.trim(),
+        notes: document.getElementById('ep_notes').value,
+        items: checkedDocs
+    };
+};
+
+window.submitEthicsPackage = async function(e, editId) {
+    e.preventDefault();
+    var data = window.collectEthicsPackageData();
+    if (!data.project_id || !data.center_id || !data.package_name) {
+        alert('请至少选择项目、中心，并填写递交包名称。');
+        return false;
+    }
+    if (!data.items.length) {
+        alert('请至少选择一个递交文件。');
+        return false;
+    }
+    var btn = e.target.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...'; }
+    var res = editId ? await api.updateEthicsSubmissionPackage(editId, data) : await api.createEthicsSubmissionPackage(data);
+    if (!res.success) {
+        alert('保存失败：' + (res.error || '未知错误'));
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> 保存递交包'; }
+        return false;
+    }
+    window.closeModal();
+    await window.loadEthics(document.getElementById('pageContent'));
+    window.showToast(editId ? '递交包已更新' : '递交包已创建');
+    return false;
+};
+
+window.viewEthicsPackage = async function(id) {
+    var res = await api.getEthicsSubmissionPackage(id);
+    if (!res.success) { alert(res.error || '加载失败'); return; }
+    var pkg = res.package;
+    var itemRows = (pkg.items || []).map(function(item, idx) {
+        return '<tr><td>' + (idx + 1) + '</td><td>' + window.escHtml(item.doc_category || '') + '</td><td>' + window.escHtml(item.doc_name || '') + '</td><td>' + window.escHtml(item.version || '-') + '</td><td>' + (item.version_date || '-') + '</td><td>' + (item.copies || 1) + '</td></tr>';
+    }).join('');
+    window.openModal(`
+        <h3><i class="fas fa-layer-group"></i> 递交包详情</h3>
+        <div class="ethics-package-detail">
+            <div class="el-preview-grid">
+                <div><span>递交包</span><strong>${window.escHtml(pkg.package_name || '-')}</strong></div>
+                <div><span>状态</span><strong>${window.escHtml(pkg.status || '-')}</strong></div>
+                <div><span>审查方式</span><strong>${window.escHtml(pkg.review_type || '-')}</strong></div>
+                <div><span>截止日期</span><strong>${pkg.due_date || '-'}</strong></div>
+                <div><span>CTA to PI</span><strong>${window.escHtml(pkg.cta_to_pi_status || '-')}</strong></div>
+                <div><span>PI to EC</span><strong>${window.escHtml(pkg.pi_to_ec_status || '-')}</strong></div>
+                <div><span>费用</span><strong>${pkg.payment_required ? window.escHtml(pkg.fee_status || '待确认') : '不适用'}</strong></div>
+                <div><span>下一步</span><strong>${window.escHtml(window.getEthicsPackageNextAction(pkg))}</strong></div>
+            </div>
+            <table class="ethics-package-table">
+                <thead><tr><th>#</th><th>类型</th><th>文件</th><th>版本</th><th>版本日期</th><th>份数</th></tr></thead>
+                <tbody>${itemRows || '<tr><td colspan="6">暂无文件</td></tr>'}</tbody>
+            </table>
+            ${pkg.notes ? '<div class="ethics-package-notes"><strong>备注：</strong>' + window.escHtml(pkg.notes) + '</div>' : ''}
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="window.closeModal();window.openEthicsPackageForm('${pkg.id}')"><i class="fas fa-edit"></i> 编辑</button>
+                <button class="btn" onclick="window.closeModal()">关闭</button>
+            </div>
+        </div>
+    `);
+};
+
+window.deleteEthicsPackage = async function(id) {
+    if (!confirm('确定删除该中心递交包？文件主数据不会被删除。')) return;
+    var res = await api.deleteEthicsSubmissionPackage(id);
+    if (!res.success) {
+        alert('删除失败：' + (res.error || '未知错误'));
+        return;
+    }
+    await window.loadEthics(document.getElementById('pageContent'));
+    window.showToast('递交包已删除');
 };
 
 // ========== 新建/编辑递交信表单 ==========
