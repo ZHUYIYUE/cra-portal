@@ -42,8 +42,10 @@ CREATE TABLE IF NOT EXISTS tasks (
     priority TEXT DEFAULT 'medium',
     ability_type TEXT DEFAULT 'execution',
     due_date TEXT DEFAULT '',
+    estimated_minutes INTEGER DEFAULT NULL,
     done BOOLEAN DEFAULT FALSE,
     task_status TEXT DEFAULT 'pending',
+    started_at TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
