@@ -548,6 +548,10 @@ body {
     border-radius: 8px;
     margin-bottom: 10px;
 }
+.project-documents-card-focus {
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.22), 0 8px 24px rgba(31, 111, 168, 0.16);
+    transition: box-shadow 0.2s ease;
+}
 @media (max-width: 720px) {
     .project-doc-table {
         min-width: 760px;
