@@ -2,6 +2,204 @@
 
 // ========== 待办事项页面 ==========
 
+window.TASK_STATUS_META = {
+    pending: { label: '待处理', icon: 'fa-circle', cls: 'pending' },
+    active: { label: '执行中', icon: 'fa-play-circle', cls: 'active' },
+    waiting_crc: { label: '跟进CRC', icon: 'fa-comment-dots', cls: 'waiting' },
+    done: { label: '已完成', icon: 'fa-check-circle', cls: 'done' }
+};
+
+window.TASK_QUADRANTS = {
+    do_now: { title: '重要且紧急', hint: '高优先级 + 2天内/已逾期', icon: 'fa-fire', cls: 'danger' },
+    schedule: { title: '重要不紧急', hint: '高优先级 + 仍有缓冲', icon: 'fa-calendar-check', cls: 'primary' },
+    quick: { title: '紧急不重要', hint: '中低优先级 + 2天内', icon: 'fa-bolt', cls: 'warning' },
+    later: { title: '不紧急不重要', hint: '中低优先级 + 可排后', icon: 'fa-layer-group', cls: 'muted' }
+};
+
+window.getTaskToday = function() {
+    return new Date().toISOString().split('T')[0];
+};
+
+window.addTaskDays = function(days) {
+    return new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+};
+
+window.getTaskStatusMeta = function(task) {
+    var status = task.done ? 'done' : (task.task_status || 'pending');
+    return window.TASK_STATUS_META[status] || window.TASK_STATUS_META.pending;
+};
+
+window.getTaskEstimatedMinutes = function(task) {
+    var n = parseInt(task.estimated_minutes, 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+window.formatTaskEstimate = function(task) {
+    var minutes = window.getTaskEstimatedMinutes(task);
+    if (!minutes) return '未估时';
+    if (minutes < 60) return minutes + '分钟';
+    var h = Math.floor(minutes / 60);
+    var m = minutes % 60;
+    return h + '小时' + (m ? m + '分钟' : '');
+};
+
+window.taskIsUrgent = function(task) {
+    if (!task.due_date) return false;
+    return task.due_date <= window.addTaskDays(2);
+};
+
+window.getTaskQuadrant = function(task) {
+    var important = (task.priority || 'medium') === 'high';
+    var urgent = window.taskIsUrgent(task);
+    if (important && urgent) return 'do_now';
+    if (important && !urgent) return 'schedule';
+    if (!important && urgent) return 'quick';
+    return 'later';
+};
+
+window.taskInDateRange = function(task, range) {
+    if (!range || range.mode === 'all') return true;
+    if (!task.due_date) return false;
+    if (range.start && task.due_date < range.start) return false;
+    if (range.end && task.due_date > range.end) return false;
+    return true;
+};
+
+window.getTaskRange = function() {
+    if (!window._taskRange) {
+        var today = window.getTaskToday();
+        window._taskRange = { mode: 'today', start: today, end: today };
+    }
+    return window._taskRange;
+};
+
+window.getTaskRangeLabel = function(range) {
+    if (!range || range.mode === 'all') return '全部未完成';
+    if (range.start === range.end) return range.start;
+    return (range.start || '不限') + ' 至 ' + (range.end || '不限');
+};
+
+window.renderTaskItem = function(t) {
+    var proj = window.state && window.state.projects ? window.state.projects.find(function(p) { return p.id === t.project_id; }) : null;
+    var taskStatus = t.done ? 'done' : (t.task_status || 'pending');
+    var statusMeta = window.getTaskStatusMeta(t);
+    var isActive = taskStatus === 'active' && !t.done;
+    var startedText = t.started_at ? window.formatDate(t.started_at).slice(0, 16) : '';
+    return `
+        <div class="task-item ${t.done ? 'task-done' : ''} ${isActive ? 'task-active' : ''}" id="task-${t.id}" data-task-id="${t.id}" data-done="${t.done}" data-status="${taskStatus}" data-ability="${t.ability_type || 'execution'}" data-due="${t.due_date || ''}" data-priority="${t.priority || 'medium'}">
+            <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="window.toggleTaskDone('${t.id}', ${!t.done})">
+            <div class="task-content" onclick="window.viewTaskDetail('${t.id}')">
+                <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${window.escHtml(t.title)}</h4>
+                <p class="task-meta">
+                    ${proj ? `<i class="fas fa-folder"></i> ${window.escHtml(proj.name)} ·` : ''}
+                    ${t.center_name ? `<i class="fas fa-hospital"></i> ${window.escHtml(t.center_name)} ·` : ''}
+                    <span class="task-status-chip task-status-${statusMeta.cls}"><i class="fas ${statusMeta.icon}"></i> ${statusMeta.label}</span>
+                    <span class="ability-tag ability-${t.ability_type || 'execution'}">${window.ABILITY_ICONS[t.ability_type || 'execution']} ${window.ABILITY_LABELS[t.ability_type || 'execution']}</span>
+                    ${t.due_date ? `<span><i class="far fa-calendar"></i> ${t.due_date}</span>` : '<span>无截止日期</span>'}
+                    <span><i class="far fa-hourglass"></i> ${window.formatTaskEstimate(t)}</span>
+                    ${startedText ? `<span><i class="fas fa-play"></i> ${startedText}</span>` : ''}
+                    ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
+                </p>
+            </div>
+            ${!t.done ? `<button class="btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'} task-start-btn" onclick="event.stopPropagation();window.toggleTaskActive('${t.id}', ${!isActive})" title="${isActive ? '暂停执行' : '开始执行'}"><i class="fas ${isActive ? 'fa-pause' : 'fa-play'}"></i> ${isActive ? '暂停' : '开始'}</button>` : ''}
+            <button class="btn-icon" onclick="event.stopPropagation();window.showEditTask('${t.id}')" title="编辑"><i class="fas fa-edit" style="color:#3498db;"></i></button>
+            <button class="btn-icon" onclick="event.stopPropagation();window.deleteTaskById('${t.id}')" title="删除"><i class="fas fa-trash-alt" style="color:#ccc;"></i></button>
+        </div>
+    `;
+};
+
+window.getTaskPlanningCandidates = function() {
+    var range = window.getTaskRange();
+    var tasks = window.state ? (window.state.tasks || []) : [];
+    return tasks.filter(function(t) {
+        return !t.done && window.taskInDateRange(t, range);
+    });
+};
+
+window.renderTaskQuadrants = function() {
+    var el = document.getElementById('taskQuadrants');
+    if (!el) return;
+    var candidates = window.getTaskPlanningCandidates();
+    var groups = { do_now: [], schedule: [], quick: [], later: [] };
+    candidates.forEach(function(t) { groups[window.getTaskQuadrant(t)].push(t); });
+    var order = { high: 0, medium: 1, low: 2 };
+    Object.keys(groups).forEach(function(key) {
+        groups[key].sort(function(a, b) {
+            var ad = a.due_date || '9999-12-31';
+            var bd = b.due_date || '9999-12-31';
+            if (ad !== bd) return ad < bd ? -1 : 1;
+            return (order[a.priority] ?? 1) - (order[b.priority] ?? 1);
+        });
+    });
+    el.innerHTML = Object.keys(window.TASK_QUADRANTS).map(function(key) {
+        var q = window.TASK_QUADRANTS[key];
+        var totalMinutes = groups[key].reduce(function(sum, t) { return sum + window.getTaskEstimatedMinutes(t); }, 0);
+        return `
+            <section class="task-quadrant tq-${q.cls}">
+                <header>
+                    <div><i class="fas ${q.icon}"></i> <strong>${q.title}</strong><small>${q.hint}</small></div>
+                    <span>${groups[key].length}项 · ${totalMinutes ? window.formatTaskEstimate({ estimated_minutes: totalMinutes }) : '未估时'}</span>
+                </header>
+                <div class="tq-list">
+                    ${groups[key].length ? groups[key].slice(0, 6).map(function(t) {
+                        return `<button type="button" onclick="window.viewTaskDetail('${t.id}')"><span>${window.escHtml(t.title)}</span><small>${t.due_date || '无截止'} · ${window.formatTaskEstimate(t)}</small></button>`;
+                    }).join('') : '<p>暂无</p>'}
+                </div>
+            </section>
+        `;
+    }).join('');
+};
+
+window.refreshTaskPlanning = function() {
+    var range = window.getTaskRange();
+    var statusFilter = window._taskStatusFilter || 'all';
+    var todayStr = window.getTaskToday();
+    var weekStr = window.addTaskDays(7);
+    document.querySelectorAll('#taskList .task-item').forEach(function(item) {
+        var done = item.dataset.done === 'true';
+        var status = item.dataset.status || 'pending';
+        var due = item.dataset.due || '';
+        var inStatus = true;
+        if (statusFilter === 'pending') inStatus = !done && status !== 'waiting_crc' && status !== 'active';
+        else if (statusFilter === 'active') inStatus = !done && status === 'active';
+        else if (statusFilter === 'overdue') inStatus = !done && due && due < todayStr;
+        else if (statusFilter === 'today') inStatus = !done && due === todayStr;
+        else if (statusFilter === 'due_week') inStatus = !done && due && due >= todayStr && due <= weekStr;
+        else if (statusFilter === 'waiting_crc') inStatus = status === 'waiting_crc' && !done;
+        else if (statusFilter === 'done') inStatus = done;
+        var inRange = range.mode === 'all' || !due ? range.mode === 'all' : (!range.start || due >= range.start) && (!range.end || due <= range.end);
+        item.style.display = inStatus && inRange ? '' : 'none';
+    });
+    var summary = document.getElementById('taskRangeSummary');
+    if (summary) {
+        var tasks = window.getTaskPlanningCandidates();
+        var minutes = tasks.reduce(function(sum, t) { return sum + window.getTaskEstimatedMinutes(t); }, 0);
+        summary.textContent = window.getTaskRangeLabel(range) + '：' + tasks.length + '项未完成' + (minutes ? '，预计 ' + window.formatTaskEstimate({ estimated_minutes: minutes }) : '');
+    }
+    window.renderTaskQuadrants();
+};
+
+window.setTaskRangePreset = function(mode) {
+    var today = window.getTaskToday();
+    if (mode === 'today') window._taskRange = { mode: 'today', start: today, end: today };
+    else if (mode === 'week') window._taskRange = { mode: 'week', start: today, end: window.addTaskDays(7) };
+    else window._taskRange = { mode: 'all', start: '', end: '' };
+    var start = document.getElementById('taskRangeStart');
+    var end = document.getElementById('taskRangeEnd');
+    if (start) start.value = window._taskRange.start || '';
+    if (end) end.value = window._taskRange.end || '';
+    document.querySelectorAll('.task-range-preset').forEach(function(b) { b.classList.toggle('active', b.dataset.range === mode); });
+    window.refreshTaskPlanning();
+};
+
+window.applyTaskCustomRange = function() {
+    var start = document.getElementById('taskRangeStart');
+    var end = document.getElementById('taskRangeEnd');
+    window._taskRange = { mode: 'custom', start: start ? start.value : '', end: end ? end.value : '' };
+    document.querySelectorAll('.task-range-preset').forEach(function(b) { b.classList.remove('active'); });
+    window.refreshTaskPlanning();
+};
+
 window.loadTasks = async function(content) {
     content = content || document.getElementById('pageContent');
     if (!content) return;
@@ -23,11 +221,14 @@ window.loadTasks = async function(content) {
     const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
     const total = tasks.length;
     const done = tasks.filter(t => t.done).length;
-    const pending = total - done;
+    const pending = tasks.filter(t => !t.done && !['active', 'waiting_crc'].includes(t.task_status || 'pending')).length;
     const overdue = tasks.filter(t => !t.done && t.due_date && t.due_date < todayStr).length;
     const dueToday = tasks.filter(t => !t.done && t.due_date === todayStr).length;
     const dueWeek = tasks.filter(t => !t.done && t.due_date && t.due_date >= todayStr && t.due_date <= weekStr).length;
     const waiting_crc = tasks.filter(t => t.task_status === 'waiting_crc' && !t.done).length;
+    const active = tasks.filter(t => t.task_status === 'active' && !t.done).length;
+    const openEstimate = tasks.filter(t => !t.done).reduce((sum, t) => sum + window.getTaskEstimatedMinutes(t), 0);
+    const range = window.getTaskRange();
     
     // 按能力类型分组统计
     const abilityGroups = {};
@@ -65,6 +266,7 @@ window.loadTasks = async function(content) {
         <div class="filter-bar">
             <button class="filter-btn active" data-filter="all" onclick="window.filterTasks(this, 'all')">全部 (${total})</button>
             <button class="filter-btn" data-filter="pending" onclick="window.filterTasks(this, 'pending')">待完成 (${pending})</button>
+            <button class="filter-btn" data-filter="active" onclick="window.filterTasks(this, 'active')">执行中 (${active})</button>
             <button class="filter-btn" data-filter="overdue" onclick="window.filterTasks(this, 'overdue')">逾期 (${overdue})</button>
             <button class="filter-btn" data-filter="today" onclick="window.filterTasks(this, 'today')">今日 (${dueToday})</button>
             <button class="filter-btn" data-filter="due_week" onclick="window.filterTasks(this, 'due_week')">本周 (${dueWeek})</button>
@@ -72,61 +274,47 @@ window.loadTasks = async function(content) {
             <button class="filter-btn" data-filter="done" onclick="window.filterTasks(this, 'done')">已完成 (${done})</button>
         </div>
 
+        <div class="task-planning-panel">
+            <div class="task-range-tools">
+                <div>
+                    <strong><i class="fas fa-chart-pie"></i> 任务四象限</strong>
+                    <span id="taskRangeSummary">${window.getTaskRangeLabel(range)}：${window.getTaskPlanningCandidates().length}项未完成${openEstimate ? '，全部未完成预计 ' + window.formatTaskEstimate({ estimated_minutes: openEstimate }) : ''}</span>
+                </div>
+                <div class="task-range-actions">
+                    <button type="button" class="task-range-preset ${range.mode === 'today' ? 'active' : ''}" data-range="today" onclick="window.setTaskRangePreset('today')">今日</button>
+                    <button type="button" class="task-range-preset ${range.mode === 'week' ? 'active' : ''}" data-range="week" onclick="window.setTaskRangePreset('week')">7天</button>
+                    <button type="button" class="task-range-preset ${range.mode === 'all' ? 'active' : ''}" data-range="all" onclick="window.setTaskRangePreset('all')">全部</button>
+                    <input type="date" id="taskRangeStart" value="${range.start || ''}" onchange="window.applyTaskCustomRange()">
+                    <span>至</span>
+                    <input type="date" id="taskRangeEnd" value="${range.end || ''}" onchange="window.applyTaskCustomRange()">
+                </div>
+            </div>
+            <div id="taskQuadrants" class="task-quadrants"></div>
+        </div>
+
         <div class="task-list" id="taskList">
             ${window.state && window.state.tasks.length === 0 ? '<p style="color:#999;padding:20px;">暂无待办事项</p>' :
-                (window.state ? window.state.tasks : []).map(t => {
-                    const proj = window.state.projects.find(p => p.id === t.project_id);
-                    const taskStatus = t.task_status || 'pending';
-                    const isWaitingCrc = taskStatus === 'waiting_crc' && !t.done;
-                    return `
-                        <div class="task-item ${t.done ? 'task-done' : ''}" data-task-id="${t.id}" data-done="${t.done}" data-status="${taskStatus}" data-ability="${t.ability_type || 'execution'}" data-due="${t.due_date || ''}">
-                            <input type="checkbox" class="task-checkbox" ${t.done ? 'checked' : ''} onchange="window.toggleTaskDone('${t.id}', ${!t.done})">
-                            <div class="task-content" onclick="window.viewTaskDetail('${t.id}')">
-                                <h4 style="${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${window.escHtml(t.title)}</h4>
-                                <p class="task-meta">
-                                    ${proj ? `<i class="fas fa-folder"></i> ${window.escHtml(proj.name)} ·` : ''}
-                                    ${t.center_name ? `<i class="fas fa-hospital"></i> ${window.escHtml(t.center_name)} ·` : ''}
-                                    ${isWaitingCrc ? `<span style="background:#e67e22;color:#fff;padding:1px 6px;border-radius:4px;font-size:11px;margin-right:4px;">跟进CRC</span>` : ''}
-                                    <span class="ability-tag ability-${t.ability_type || 'execution'}">${window.ABILITY_ICONS[t.ability_type || 'execution']} ${window.ABILITY_LABELS[t.ability_type || 'execution']}</span> ·
-                                    ${t.due_date ? `<i class="far fa-calendar"></i> ${t.due_date}` : '无截止日期'}
-                                    ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
-                                </p>
-                            </div>
-                            <button class="btn-icon" onclick="event.stopPropagation();window.showEditTask('${t.id}')" title="编辑"><i class="fas fa-edit" style="color:#3498db;"></i></button>
-                            <button class="btn-icon" onclick="event.stopPropagation();window.deleteTaskById('${t.id}')" title="删除"><i class="fas fa-trash-alt" style="color:#ccc;"></i></button>
-                        </div>
-                    `;
-                }).join('')
+                (window.state ? window.state.tasks : []).map(t => window.renderTaskItem(t)).join('')
             }
         </div>
     `;
+    window.refreshTaskPlanning();
 };
 
 window.filterByAbility = function(abilityType) {
+    window._taskStatusFilter = 'all';
     document.querySelectorAll('#taskList .task-item').forEach(item => {
         if (item.dataset.ability === abilityType) item.style.display = '';
         else item.style.display = 'none';
     });
+    window.renderTaskQuadrants();
 };
 
 window.filterTasks = function(btn, filter) {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    
-    document.querySelectorAll('#taskList .task-item').forEach(item => {
-        const done = item.dataset.done === 'true';
-        const status = item.dataset.status || 'pending';
-        const due = item.dataset.due || '';
-        const todayStr = new Date().toISOString().split('T')[0];
-        const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-        if (filter === 'all') item.style.display = '';
-        else if (filter === 'pending') item.style.display = (done || status === 'waiting_crc') ? 'none' : '';
-        else if (filter === 'overdue') item.style.display = (!done && due && due < todayStr) ? '' : 'none';
-        else if (filter === 'today') item.style.display = (!done && due === todayStr) ? '' : 'none';
-        else if (filter === 'due_week') item.style.display = (!done && due && due >= todayStr && due <= weekStr) ? '' : 'none';
-        else if (filter === 'waiting_crc') item.style.display = status === 'waiting_crc' && !done ? '' : 'none';
-        else if (filter === 'done') item.style.display = done ? '' : 'none';
-    });
+    window._taskStatusFilter = filter;
+    window.refreshTaskPlanning();
 };
 
 window.applyTaskFilter = function(filter) {
@@ -333,13 +521,20 @@ window.renderTaskForm = function(projectId, title, selectedCenterId) {
                 <label>任务状态</label>
                 <select name="task_status">
                     <option value="pending">🔵 待处理</option>
+                    <option value="active">▶️ 执行中</option>
                     <option value="waiting_crc">🟠 跟进CRC</option>
                     <option value="done">✅ 已完成</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>截止日期</label>
-                <input type="date" name="due_date">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>截止日期</label>
+                    <input type="date" name="due_date">
+                </div>
+                <div class="form-group">
+                    <label>预计耗时（分钟）</label>
+                    <input type="number" name="estimated_minutes" min="5" step="5" placeholder="例：30">
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 创建</button>
@@ -389,15 +584,17 @@ window.submitCreateTask = async function(e) {
         ability_type: form.ability_type.value,
         priority: form.priority.value,
         due_date: form.due_date.value,
+        estimated_minutes: parseInt(form.estimated_minutes.value, 10) || null,
         task_status: taskStatus,
-        done: taskStatus === 'done'
+        done: taskStatus === 'done',
+        started_at: taskStatus === 'active' ? new Date().toISOString() : ''
     };
     
     const result = await api.createTask(data);
     
     if (result.success) {
         window.closeModal();
-        alert('✅ 待办创建成功！');
+        alert(window._taskPlanningColumnsMissing ? '✅ 待办创建成功！\n\n提示：数据库尚未执行任务规划字段迁移，预计耗时/开始时间暂时不会保存。' : '✅ 待办创建成功！');
         if (window.state && window.state.currentProject && data.project_id === window.state.currentProject.id) {
             window.viewProject(window.state.currentProject.id);
         } else {
@@ -427,6 +624,36 @@ window.toggleTaskDone = async function(taskId, newDone) {
                 h4.style.color = newDone ? '#999' : '';
             }
         }
+        const content = document.getElementById('pageContent');
+        if (window.state && window.state.currentPage === 'tasks' && content) {
+            await window.loadTasks(content);
+        } else if (window.state && window.state.currentProject) {
+            await window.loadProjectTasks(window.state.currentProject.id);
+        }
+    }
+};
+
+window.toggleTaskActive = async function(taskId, activate) {
+    const payload = activate
+        ? { done: false, task_status: 'active', started_at: new Date().toISOString() }
+        : { done: false, task_status: 'pending' };
+    try {
+        const result = await api.updateTask(taskId, payload);
+        if (!result.success) {
+            alert('❌ 操作失败: ' + (result.error || '未知错误'));
+            return;
+        }
+        if (window._taskPlanningColumnsMissing && activate) {
+            window.showToast('已设为执行中；开始时间需执行数据库迁移后才能保存');
+        }
+        const content = document.getElementById('pageContent');
+        if (window.state && window.state.currentPage === 'tasks' && content) {
+            await window.loadTasks(content);
+        } else if (window.state && window.state.currentProject) {
+            await window.loadProjectTasks(window.state.currentProject.id);
+        }
+    } catch (e) {
+        alert('❌ 操作失败: ' + e.message);
     }
 };
 
@@ -501,13 +728,20 @@ window.showEditTask = async function(taskId) {
                 <label>任务状态</label>
                 <select name="task_status" id="edit-task-status">
                     <option value="pending" ${(task.task_status || 'pending') === 'pending' ? 'selected' : ''}>🔵 待处理</option>
+                    <option value="active" ${task.task_status === 'active' ? 'selected' : ''}>▶️ 执行中</option>
                     <option value="waiting_crc" ${task.task_status === 'waiting_crc' ? 'selected' : ''}>🟠 跟进CRC</option>
                     <option value="done" ${task.task_status === 'done' ? 'selected' : ''}>✅ 已完成</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>截止日期</label>
-                <input type="date" name="due_date" id="edit-task-due-date" value="${task.due_date || ''}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>截止日期</label>
+                    <input type="date" name="due_date" id="edit-task-due-date" value="${task.due_date || ''}">
+                </div>
+                <div class="form-group">
+                    <label>预计耗时（分钟）</label>
+                    <input type="number" name="estimated_minutes" min="5" step="5" value="${task.estimated_minutes || ''}" placeholder="例：30">
+                </div>
             </div>
             <div class="form-actions">
                 <button type="submit" class="btn btn-success"><i class="fas fa-check"></i> 保存修改</button>
@@ -562,16 +796,20 @@ window.submitUpdateTask = async function(e, taskId) {
         ability_type: formData.get('ability_type'),
         priority: formData.get('priority'),
         due_date: formData.get('due_date') || null,
+        estimated_minutes: parseInt(formData.get('estimated_minutes'), 10) || null,
         task_status: taskStatus,
         done: taskStatus === 'done'
     };
+    if (taskStatus === 'active') {
+        payload.started_at = new Date().toISOString();
+    }
     
     try {
         const result = await api.updateTask(taskId, payload);
         
         if (result.success) {
             window.closeModal();
-            window.showToast('✅ 已保存');
+            window.showToast(window._taskPlanningColumnsMissing ? '✅ 已保存；预计耗时/开始时间需执行数据库迁移后才能保存' : '✅ 已保存');
             // 重新加载当前页面任务列表
             if (window.state && window.state.currentPage === 'tasks') {
                 const content = document.getElementById('pageContent');
@@ -598,13 +836,16 @@ window.viewTaskDetail = function(taskId) {
     const proj = window.state && window.state.projects ? window.state.projects.find(p => p.id === task.project_id) : null;
     const atLabel = window.ABILITY_LABELS[task.ability_type || 'execution'];
     const atIcon = window.ABILITY_ICONS[task.ability_type || 'execution'];
+    const statusMeta = window.getTaskStatusMeta(task);
     alert(
         `📋 ${task.title}\n\n` +
         `项目：${proj ? proj.name : '未关联'}\n` +
         `能力：${atIcon} ${atLabel}\n` +
         `优先级：${{high:'高',medium:'中',low:'低'}[task.priority]||task.priority}\n` +
         `截止：${task.due_date || '未设置'}\n` +
-        `状态：${task.done ? '✅ 已完成' : '⏳ 进行中'}\n\n` +
+        `预计耗时：${window.formatTaskEstimate(task)}\n` +
+        `状态：${statusMeta.label}\n` +
+        `${task.started_at ? '开始时间：' + window.formatDate(task.started_at).slice(0,16) + '\n' : ''}\n` +
         `创建时间：${task.created_at ? task.created_at.slice(0,16) : '未知'}`
     );
 };

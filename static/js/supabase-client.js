@@ -68,6 +68,18 @@ function _now() { return new Date().toISOString(); }
 
 function _todayStr() { return new Date().toISOString().split('T')[0]; }
 
+function _isMissingTaskPlanningColumn(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /estimated_minutes|started_at|schema cache|column/i.test(msg);
+}
+
+function _stripTaskPlanningFields(data) {
+    var copy = Object.assign({}, data);
+    delete copy.estimated_minutes;
+    delete copy.started_at;
+    return copy;
+}
+
 // ========== 全局 API 对象 ==========
 
 window.api = {
@@ -223,23 +235,38 @@ window.api = {
 
     createTask: async function(data) {
         var id = data.id || _genId();
-        await _insert('tasks', {
+        var row = {
             id: id, title: data.title || '', project_id: data.project_id || '',
             center_id: data.center_id || '', priority: data.priority || 'medium',
             ability_type: data.ability_type || 'execution', due_date: data.due_date || '',
             done: data.done || false, task_status: data.task_status || 'pending',
+            estimated_minutes: data.estimated_minutes || null,
+            started_at: data.started_at || '',
             created_at: _now()
-        });
+        };
+        try {
+            await _insert('tasks', row);
+        } catch (err) {
+            if (!_isMissingTaskPlanningColumn(err)) throw err;
+            window._taskPlanningColumnsMissing = true;
+            await _insert('tasks', _stripTaskPlanningFields(row));
+        }
         return { success: true, id: id };
     },
 
     updateTask: async function(id, data) {
         var update = {};
         ['title', 'project_id', 'center_id', 'priority', 'ability_type',
-         'due_date', 'done', 'task_status'].forEach(function(f) {
+         'due_date', 'done', 'task_status', 'estimated_minutes', 'started_at'].forEach(function(f) {
             if (f in data) update[f] = data[f];
         });
-        await _update('tasks', id, update);
+        try {
+            await _update('tasks', id, update);
+        } catch (err) {
+            if (!_isMissingTaskPlanningColumn(err)) throw err;
+            window._taskPlanningColumnsMissing = true;
+            await _update('tasks', id, _stripTaskPlanningFields(update));
+        }
         return { success: true };
     },
 
@@ -845,9 +872,9 @@ window.api = {
         var wb = XLSX.utils.book_new();
         if (type === 'tasks' || type === 'all') {
             var tasksData = await _select('tasks', { order: 'created_at.asc' });
-            var wsData = [['ID', '标题', '项目ID', '中心ID', '优先级', '能力类型', '截止日期', '状态', '创建时间']];
+            var wsData = [['ID', '标题', '项目ID', '中心ID', '优先级', '能力类型', '截止日期', '预计耗时(分钟)', '任务状态', '是否完成', '开始时间', '创建时间']];
             tasksData.forEach(function(t) {
-                wsData.push([t.id, t.title, t.project_id, t.center_id, t.priority, t.ability_type, t.due_date, t.done ? '已完成' : '待办', t.created_at]);
+                wsData.push([t.id, t.title, t.project_id, t.center_id, t.priority, t.ability_type, t.due_date, t.estimated_minutes || '', t.task_status || '', t.done ? '已完成' : '待办', t.started_at || '', t.created_at]);
             });
             var ws = XLSX.utils.aoa_to_sheet(wsData);
             XLSX.utils.book_append_sheet(wb, ws, '待办事项');
