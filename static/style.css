@@ -552,12 +552,177 @@ body {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.22), 0 8px 24px rgba(31, 111, 168, 0.16);
     transition: box-shadow 0.2s ease;
 }
+
+/* ====== 中心伦理递交包 ====== */
+.ethics-package-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.ethics-package-summary > div {
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: #fbfcfe;
+}
+.ethics-package-summary strong {
+    display: block;
+    font-size: 1.4em;
+    color: #2c3e50;
+}
+.ethics-package-summary span {
+    color: #647386;
+    font-size: 0.86em;
+}
+.ethics-package-summary .danger {
+    border-color: #f2b4b4;
+    background: #fff1f1;
+}
+.ethics-package-summary .danger strong { color: #c0392b; }
+.ethics-package-summary .warning {
+    border-color: #f2d28b;
+    background: #fff8e8;
+}
+.ethics-package-summary .warning strong { color: #b36b00; }
+.ethics-package-table-wrap {
+    overflow-x: auto;
+}
+.ethics-package-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+}
+.ethics-package-table th {
+    padding: 10px 8px;
+    text-align: left;
+    background: #f5f7fa;
+    border-bottom: 2px solid #e4ebf2;
+    color: #526273;
+    white-space: nowrap;
+}
+.ethics-package-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #edf1f5;
+    vertical-align: top;
+}
+.ethics-package-name {
+    font-weight: 700;
+    color: #243445;
+}
+.ethics-package-table small {
+    display: block;
+    margin-top: 3px;
+    color: #7b8794;
+}
+.ethics-package-status {
+    display: inline-flex;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef2f6;
+    color: #526273;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.ethics-package-status.warning { background: #fff4e5; color: #b86000; }
+.ethics-package-status.danger { background: #ffe9e9; color: #c0392b; }
+.ethics-package-status.ok { background: #e8f7ee; color: #1f8a4c; }
+.ethics-package-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+.ethics-package-empty,
+.ethics-package-empty-cell,
+.ep-doc-empty {
+    padding: 18px;
+    color: #647386;
+    background: #fbfcfe;
+    border: 1px dashed #ccd6e0;
+    border-radius: 8px;
+}
+.ethics-package-empty {
+    display: flex;
+    gap: 12px;
+}
+.ethics-package-empty.warning {
+    color: #8a5a00;
+    border-color: #f2d28b;
+    background: #fff8e8;
+}
+.ethics-package-doc-picker {
+    padding: 12px;
+    margin: 12px 0;
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    background: #fbfcfe;
+}
+.ep-section-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 10px;
+}
+.ep-section-title span {
+    color: #7b8794;
+    font-size: 0.86em;
+}
+.ep-doc-list {
+    display: grid;
+    gap: 8px;
+}
+.ep-doc-option {
+    display: grid;
+    grid-template-columns: auto 1fr 72px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    background: #fff;
+}
+.ep-doc-option strong,
+.ep-doc-option small {
+    display: block;
+}
+.ep-doc-option small {
+    color: #7b8794;
+    margin-top: 3px;
+}
+.ep-doc-copies {
+    width: 64px;
+    padding: 6px;
+    border: 1px solid #d8e0e8;
+    border-radius: 6px;
+}
+.ethics-package-detail {
+    max-width: 860px;
+}
+.ethics-package-notes {
+    margin-top: 12px;
+    padding: 10px;
+    border-radius: 8px;
+    background: #f7f9fb;
+    color: #526273;
+}
 @media (max-width: 720px) {
     .project-doc-table {
         min-width: 760px;
     }
     .project-doc-checks {
         flex-direction: column;
+    }
+    .ethics-package-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ethics-package-table {
+        min-width: 960px;
+    }
+    .ep-doc-option {
+        grid-template-columns: auto 1fr;
+    }
+    .ep-doc-copies {
+        grid-column: 2;
     }
 }
 
