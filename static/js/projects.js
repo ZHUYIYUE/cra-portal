@@ -86,7 +86,7 @@ window.viewProject = async function(projectId) {
 
             ${window.renderProjectCockpit(projectId, p, centers, tasks, findings)}
 
-            <div class="card project-documents-card">
+            <div class="card project-documents-card" id="projectDocumentsCard">
                 <div class="card-header">
                     <i class="fas fa-file-medical-alt"></i> 项目文件
                     <button class="btn btn-primary btn-sm" onclick="window.openProjectDocumentForm('${projectId}')" style="margin-left:auto;">
@@ -395,6 +395,7 @@ window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
                 <div class="pc-actions">
                     <button class="btn btn-sm btn-primary" onclick="window.showAddTaskForProject('${projectId}')"><i class="fas fa-plus"></i> 新建待办</button>
                     <button class="btn btn-sm btn-outline" onclick="window.openProjectFindingForm('${projectId}')"><i class="fas fa-search-plus"></i> 录入问题</button>
+                    <button class="btn btn-sm btn-outline" onclick="window.focusProjectDocuments()"><i class="fas fa-file-medical-alt"></i> 项目文件</button>
                     <button class="btn btn-sm btn-outline" onclick="window.showAddCenterModal('${projectId}')"><i class="fas fa-hospital"></i> 添加中心</button>
                     <button class="btn btn-sm btn-outline" onclick="window.focusProjectFindings('${projectId}')"><i class="fas fa-filter"></i> 查看问题</button>
                 </div>
@@ -433,6 +434,14 @@ window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
             </div>
         </section>
     `;
+};
+
+window.focusProjectDocuments = function() {
+    const el = document.getElementById('projectDocumentsCard');
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.add('project-documents-card-focus');
+    setTimeout(function() { el.classList.remove('project-documents-card-focus'); }, 1600);
 };
 
 window.openProjectFindingForm = async function(projectId) {
