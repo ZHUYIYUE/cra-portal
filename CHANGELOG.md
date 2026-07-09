@@ -34,4 +34,4 @@
 
 ### Deployment
 
-- 中心递交包功能准备部署至 GitHub Pages。
+- 中心递交包功能已部署至 GitHub Pages。
