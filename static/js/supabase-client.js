@@ -73,6 +73,11 @@ function _isMissingTaskPlanningColumn(err) {
     return /estimated_minutes|started_at|schema cache|column/i.test(msg);
 }
 
+function _isMissingProjectDocumentsTable(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /project_documents|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
+}
+
 function _stripTaskPlanningFields(data) {
     var copy = Object.assign({}, data);
     delete copy.estimated_minutes;
@@ -134,6 +139,86 @@ window.api = {
 
     deleteProject: async function(id) {
         return _delete('projects', id);
+    },
+
+    // ===== 项目文件库 =====
+
+    getProjectDocuments: async function(projectId) {
+        var params = { order: 'created_at.desc' };
+        if (projectId) params.project_id = 'eq.' + projectId;
+        try {
+            var docs = await _select('project_documents', params);
+            return { success: true, documents: docs };
+        } catch (err) {
+            if (!_isMissingProjectDocumentsTable(err)) throw err;
+            return { success: true, documents: [], missingTable: true };
+        }
+    },
+
+    getProjectDocument: async function(id) {
+        try {
+            var doc = await _selectOne('project_documents', id);
+            if (!doc) return { success: false, error: '项目文件不存在' };
+            return { success: true, document: doc };
+        } catch (err) {
+            if (!_isMissingProjectDocumentsTable(err)) throw err;
+            return { success: false, error: '项目文件表尚未创建，请先执行 supabase/project_documents.sql' };
+        }
+    },
+
+    createProjectDocument: async function(data) {
+        var id = _genId();
+        try {
+            await _insert('project_documents', {
+                id: id,
+                project_id: data.project_id || '',
+                doc_category: data.doc_category || '',
+                doc_name: data.doc_name || '',
+                version: data.version || '',
+                version_date: data.version_date || '',
+                effective_date: data.effective_date || '',
+                received_date: data.received_date || '',
+                requires_ethics_submission: !!data.requires_ethics_submission,
+                requires_training: !!data.requires_training,
+                training_scope: data.training_scope || '',
+                training_due_days: data.training_due_days || null,
+                notes: data.notes || '',
+                created_at: _now(),
+                updated_at: _now()
+            });
+            return { success: true, id: id };
+        } catch (err) {
+            if (!_isMissingProjectDocumentsTable(err)) throw err;
+            return { success: false, error: '项目文件表尚未创建，请先执行 supabase/project_documents.sql' };
+        }
+    },
+
+    updateProjectDocument: async function(id, data) {
+        var update = { updated_at: _now() };
+        ['project_id', 'doc_category', 'doc_name', 'version', 'version_date',
+         'effective_date', 'received_date', 'requires_ethics_submission',
+         'requires_training', 'training_scope', 'training_due_days', 'notes'].forEach(function(f) {
+            if (f in data) update[f] = data[f];
+        });
+        if ('requires_ethics_submission' in update) update.requires_ethics_submission = !!update.requires_ethics_submission;
+        if ('requires_training' in update) update.requires_training = !!update.requires_training;
+        if ('training_due_days' in update && !update.training_due_days) update.training_due_days = null;
+        try {
+            await _update('project_documents', id, update);
+            return { success: true };
+        } catch (err) {
+            if (!_isMissingProjectDocumentsTable(err)) throw err;
+            return { success: false, error: '项目文件表尚未创建，请先执行 supabase/project_documents.sql' };
+        }
+    },
+
+    deleteProjectDocument: async function(id) {
+        try {
+            return await _delete('project_documents', id);
+        } catch (err) {
+            if (!_isMissingProjectDocumentsTable(err)) throw err;
+            return { success: false, error: '项目文件表尚未创建，请先执行 supabase/project_documents.sql' };
+        }
     },
 
     // ===== 中心 =====

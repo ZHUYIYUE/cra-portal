@@ -22,6 +22,16 @@ https://zhuyiyue.github.io/cra-portal/
 - 伦理递交信管理
 - 基于公司 Word 模板自动生成递交信
 
+## 产品方向
+
+- `VISION.md`：产品愿景和 CRA OS 定位
+- `PRODUCT_BACKLOG.md`：按 Epic / Story 拆分的后续开发计划
+- `ETHICS_WORKFLOW_SPEC.md`：伦理递交包真实业务流程和开发规格
+- `TRAINING_WORKFLOW_SPEC.md`：项目文件触发授权研究人员培训的管理规格
+- `CROSS_MODULE_INTEGRATION_SPEC.md`：项目文件、伦理递交、财务费用跨模块打通规格
+- `AGENTS.md`：给 Codex / AI 开发者的协作约束
+- `CHANGELOG.md`：每次功能和工程变更记录
+
 ## 关键目录
 
 ```text

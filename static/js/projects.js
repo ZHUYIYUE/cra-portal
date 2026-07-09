@@ -1,5 +1,8 @@
 // ========== 项目页面 + 项目详情 + 中心列表 + 新建/编辑项目 ==========
 
+window.PROJECT_DOCUMENT_CATEGORIES = ['方案', '知情同意书', '药品管理手册', '中心实验室手册', '安全性文件', '其他'];
+window.PROJECT_DOCUMENT_TRAINING_SCOPES = ['全体授权人员', 'PI/Sub-I', '药品相关人员', '实验室相关人员', '自定义'];
+
 window.loadProjects = async function(content) {
     content.innerHTML = `<div class="card"><div class="card-header"><i class="fas fa-folder-open"></i> 项目管理</div></div><p style="color:#999;text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> 加载中...</p>`;
     
@@ -45,11 +48,12 @@ window.loadProjects = async function(content) {
 };
 
 window.viewProject = async function(projectId) {
-    const [projectData, tasksData, centersData, findingsData] = await Promise.all([
+    const [projectData, tasksData, centersData, findingsData, docsData] = await Promise.all([
         api.getProject(projectId),
         api.getTasks({project_id: projectId}),
         api.getCenters(projectId),
-        api.getFindings({project_id: projectId})
+        api.getFindings({project_id: projectId}),
+        api.getProjectDocuments(projectId)
     ]);
     if (!projectData.success) { alert('加载失败'); return; }
 
@@ -57,6 +61,7 @@ window.viewProject = async function(projectId) {
     const tasks = tasksData.tasks || [];
     const centers = centersData.centers || [];
     const findings = findingsData.findings || [];
+    const projectDocuments = docsData.documents || [];
     if (window.state) {
         window.state.currentProject = p;
     }
@@ -80,6 +85,16 @@ window.viewProject = async function(projectId) {
             </div>
 
             ${window.renderProjectCockpit(projectId, p, centers, tasks, findings)}
+
+            <div class="card project-documents-card">
+                <div class="card-header">
+                    <i class="fas fa-file-medical-alt"></i> 项目文件
+                    <button class="btn btn-primary btn-sm" onclick="window.openProjectDocumentForm('${projectId}')" style="margin-left:auto;">
+                        <i class="fas fa-plus"></i> 新增文件
+                    </button>
+                </div>
+                <div id="projectDocuments"></div>
+            </div>
 
             <div class="card">
                 <div class="card-header">
@@ -105,8 +120,221 @@ window.viewProject = async function(projectId) {
 
     const centersEl = document.getElementById('projectCenters');
     if (centersEl) centersEl.dataset.projectId = projectId;
+    window.renderProjectDocuments(projectId, projectDocuments, docsData.missingTable);
     window.renderCenters(centers, projectId);
     window.renderProjectTasks(tasks);
+};
+
+window.renderProjectDocuments = function(projectId, documents, missingTable) {
+    const el = document.getElementById('projectDocuments');
+    if (!el) return;
+    if (missingTable) {
+        el.innerHTML = `
+            <div class="project-doc-empty warning">
+                <i class="fas fa-database"></i>
+                <div>
+                    <strong>项目文件库尚未启用</strong>
+                    <span>请先在 Supabase SQL Editor 执行 <code>supabase/project_documents.sql</code>，再新增项目文件。</span>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    if (!documents || documents.length === 0) {
+        el.innerHTML = `
+            <div class="project-doc-empty">
+                <i class="fas fa-folder-open"></i>
+                <div>
+                    <strong>暂无项目文件</strong>
+                    <span>项目组发布新版方案、知情、药品手册或中心实验室手册后，可先登记在这里。</span>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const sortDate = function(d) { return d.received_date || d.version_date || d.created_at || ''; };
+    const sorted = documents.slice().sort(function(a, b) { return sortDate(a) < sortDate(b) ? 1 : -1; });
+    el.innerHTML = `
+        <div class="project-doc-table-wrap">
+            <table class="project-doc-table">
+                <thead>
+                    <tr>
+                        <th>文件</th>
+                        <th>版本</th>
+                        <th>接收日期</th>
+                        <th>后续动作</th>
+                        <th>备注</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${sorted.map(function(doc) {
+                        const needsEthics = !!doc.requires_ethics_submission;
+                        const needsTraining = !!doc.requires_training;
+                        const trainingMeta = needsTraining
+                            ? [doc.training_scope, doc.training_due_days ? doc.training_due_days + '天内' : ''].filter(Boolean).join(' · ')
+                            : '';
+                        return `
+                            <tr>
+                                <td>
+                                    <div class="project-doc-name">${window.escHtml(doc.doc_name || '未命名文件')}</div>
+                                    <div class="project-doc-sub">${window.escHtml(doc.doc_category || '未分类')}</div>
+                                </td>
+                                <td>
+                                    <div>${window.escHtml(doc.version || '-')}</div>
+                                    <small>${doc.version_date || ''}</small>
+                                </td>
+                                <td>${doc.received_date || '-'}</td>
+                                <td>
+                                    <div class="project-doc-tags">
+                                        ${needsEthics ? '<span class="project-doc-tag ethics">需递交伦理</span>' : '<span class="project-doc-tag muted">无需伦理</span>'}
+                                        ${needsTraining ? '<span class="project-doc-tag training">需培训</span>' : ''}
+                                    </div>
+                                    ${trainingMeta ? '<small class="project-doc-training">' + window.escHtml(trainingMeta) + '</small>' : ''}
+                                </td>
+                                <td><span class="project-doc-notes">${window.escHtml(doc.notes || '-')}</span></td>
+                                <td class="project-doc-actions">
+                                    <button class="btn btn-text btn-sm" onclick="window.openProjectDocumentForm('${projectId}', '${doc.id}')" title="编辑"><i class="fas fa-edit"></i></button>
+                                    <button class="btn btn-text btn-sm" onclick="window.deleteProjectDocument('${projectId}', '${doc.id}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+};
+
+window.loadProjectDocuments = async function(projectId) {
+    const data = await api.getProjectDocuments(projectId);
+    window.renderProjectDocuments(projectId, data.documents || [], data.missingTable);
+};
+
+window.openProjectDocumentForm = async function(projectId, docId) {
+    let doc = null;
+    if (docId) {
+        const res = await api.getProjectDocument(docId);
+        if (!res.success) { alert(res.error || '项目文件加载失败'); return; }
+        doc = res.document;
+    }
+    const categoryOptions = window.PROJECT_DOCUMENT_CATEGORIES.map(function(c) {
+        return '<option value="' + c + '"' + (doc && doc.doc_category === c ? ' selected' : '') + '>' + c + '</option>';
+    }).join('');
+    const scopeOptions = window.PROJECT_DOCUMENT_TRAINING_SCOPES.map(function(s) {
+        return '<option value="' + s + '"' + (doc && doc.training_scope === s ? ' selected' : '') + '>' + s + '</option>';
+    }).join('');
+    window.openModal(`
+        <div class="modal-header"><h3><i class="fas fa-file-medical-alt"></i> ${docId ? '编辑项目文件' : '新增项目文件'}</h3></div>
+        <form id="projectDocumentForm" onsubmit="return window.submitProjectDocumentForm(event, '${projectId}', '${docId || ''}')" class="project-doc-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>文件类型 *</label>
+                    <select name="doc_category" required>${categoryOptions}</select>
+                </div>
+                <div class="form-group">
+                    <label>接收日期</label>
+                    <input type="date" name="received_date" value="${doc ? window.escAttr(doc.received_date || '') : ''}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>文件名称 *</label>
+                <input type="text" name="doc_name" required value="${doc ? window.escAttr(doc.doc_name || '') : ''}" placeholder="例：药品管理手册">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>版本号</label>
+                    <input type="text" name="version" value="${doc ? window.escAttr(doc.version || '') : ''}" placeholder="例：V2.0">
+                </div>
+                <div class="form-group">
+                    <label>版本日期</label>
+                    <input type="date" name="version_date" value="${doc ? window.escAttr(doc.version_date || '') : ''}">
+                </div>
+                <div class="form-group">
+                    <label>生效日期</label>
+                    <input type="date" name="effective_date" value="${doc ? window.escAttr(doc.effective_date || '') : ''}">
+                </div>
+            </div>
+            <div class="project-doc-checks">
+                <label><input type="checkbox" name="requires_ethics_submission" ${doc && doc.requires_ethics_submission ? 'checked' : ''}> 需要递交伦理</label>
+                <label><input type="checkbox" name="requires_training" ${doc && doc.requires_training ? 'checked' : ''} onchange="window.toggleProjectDocumentTrainingFields(this.checked)"> 需要授权研究人员培训</label>
+            </div>
+            <div id="projectDocTrainingFields" class="project-doc-training-fields" style="${doc && doc.requires_training ? '' : 'display:none;'}">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>培训范围</label>
+                        <select name="training_scope">${scopeOptions}</select>
+                    </div>
+                    <div class="form-group">
+                        <label>建议完成天数</label>
+                        <input type="number" name="training_due_days" min="1" step="1" value="${doc && doc.training_due_days ? window.escAttr(doc.training_due_days) : ''}" placeholder="例：7">
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>备注</label>
+                <textarea name="notes" rows="3" placeholder="递交要求、培训注意事项等">${doc ? window.escAttr(doc.notes || '') : ''}</textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-success"><i class="fas fa-save"></i> 保存</button>
+                <button type="button" class="btn" onclick="window.closeModal()">取消</button>
+            </div>
+        </form>
+    `);
+};
+
+window.toggleProjectDocumentTrainingFields = function(checked) {
+    const el = document.getElementById('projectDocTrainingFields');
+    if (el) el.style.display = checked ? '' : 'none';
+};
+
+window.submitProjectDocumentForm = async function(e, projectId, docId) {
+    e.preventDefault();
+    const form = e.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...'; }
+    const requiresTraining = !!form.requires_training.checked;
+    const data = {
+        project_id: projectId,
+        doc_category: form.doc_category.value,
+        doc_name: form.doc_name.value.trim(),
+        version: form.version.value.trim(),
+        version_date: form.version_date.value,
+        effective_date: form.effective_date.value,
+        received_date: form.received_date.value,
+        requires_ethics_submission: !!form.requires_ethics_submission.checked,
+        requires_training: requiresTraining,
+        training_scope: requiresTraining ? form.training_scope.value : '',
+        training_due_days: requiresTraining ? (parseInt(form.training_due_days.value, 10) || null) : null,
+        notes: form.notes.value
+    };
+    try {
+        const res = docId ? await api.updateProjectDocument(docId, data) : await api.createProjectDocument(data);
+        if (!res.success) {
+            alert('保存失败：' + (res.error || '未知错误'));
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> 保存'; }
+            return false;
+        }
+        window.closeModal();
+        window.showToast(docId ? '项目文件已更新' : '项目文件已新增');
+        await window.loadProjectDocuments(projectId);
+    } catch (err) {
+        alert('保存失败：' + err.message);
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fas fa-save"></i> 保存'; }
+    }
+    return false;
+};
+
+window.deleteProjectDocument = async function(projectId, docId) {
+    if (!confirm('确定删除该项目文件？后续递交包和培训计划会引用项目文件，正式使用后建议谨慎删除。')) return;
+    const res = await api.deleteProjectDocument(docId);
+    if (!res.success) {
+        alert('删除失败：' + (res.error || '未知错误'));
+        return;
+    }
+    window.showToast('项目文件已删除');
+    await window.loadProjectDocuments(projectId);
 };
 
 window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
