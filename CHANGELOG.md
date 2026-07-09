@@ -29,4 +29,4 @@
 
 ### Deployment
 
-- 待提交并部署到 `gh-pages`。
+- 已部署到 `gh-pages`。
