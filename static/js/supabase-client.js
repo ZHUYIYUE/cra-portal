@@ -929,6 +929,86 @@ window.api = {
         }
     },
 
+    createEthicsLettersFromPackage: async function(packageId) {
+        try {
+            var pkg = await _selectOne('ethics_submission_packages', packageId);
+            if (!pkg) return { success: false, error: '递交包不存在' };
+            var pkgItems = await _select('ethics_submission_package_items', { package_id: 'eq.' + packageId, order: 'created_at.asc' });
+            if (!pkgItems.length) return { success: false, error: '递交包没有文件清单，无法生成递交信' };
+
+            var marker = '递交包ID:' + packageId;
+            var existingLetters = await _select('ethics_letters', {
+                project_id: 'eq.' + (pkg.project_id || ''),
+                center_id: 'eq.' + (pkg.center_id || '')
+            });
+            var existingByType = {};
+            existingLetters.forEach(function(letter) {
+                if ((letter.notes || '').indexOf(marker) >= 0) {
+                    existingByType[letter.letter_type || 'CRA_to_PI'] = letter;
+                }
+            });
+
+            var itemData = pkgItems.map(function(item) {
+                return {
+                    doc_type: item.doc_category || '',
+                    doc_name: item.doc_name || '',
+                    version: item.version || '',
+                    version_date: item.version_date || '',
+                    copies: item.copies || 1,
+                    notes: ''
+                };
+            });
+            var noteParts = [
+                '由中心递交包自动生成：' + (pkg.package_name || ''),
+                marker
+            ];
+            if (pkg.notes) noteParts.push(pkg.notes);
+            var baseData = {
+                project_id: pkg.project_id || '',
+                center_id: pkg.center_id || '',
+                submission_date: _todayStr(),
+                submitter_name: '',
+                submitter_phone: '',
+                submit_method: '快递',
+                tracking_number: '',
+                ethics_committee: pkg.ethics_committee || '',
+                notes: noteParts.join('\n'),
+                items: itemData
+            };
+            var resultLetters = [];
+            var types = ['CRA_to_PI', 'PI_to_Ethics'];
+            for (var i = 0; i < types.length; i++) {
+                var type = types[i];
+                if (existingByType[type]) {
+                    resultLetters.push({ type: type, id: existingByType[type].id, created: false });
+                    continue;
+                }
+                var created = await this.createEthicsLetter(Object.assign({}, baseData, { letter_type: type }));
+                resultLetters.push({ type: type, id: created.id, created: true });
+            }
+
+            var keepAdvancedStatus = function(value) {
+                return value && value !== '未生成' ? value : '已生成';
+            };
+            await _update('ethics_submission_packages', packageId, {
+                cta_to_pi_status: keepAdvancedStatus(pkg.cta_to_pi_status),
+                pi_to_ec_status: keepAdvancedStatus(pkg.pi_to_ec_status),
+                updated_at: _now()
+            });
+
+            return {
+                success: true,
+                package_id: packageId,
+                package_name: pkg.package_name || '',
+                letters: resultLetters,
+                created_count: resultLetters.filter(function(x) { return x.created; }).length
+            };
+        } catch (err) {
+            if (!_isMissingEthicsPackagesTable(err)) throw err;
+            return { success: false, error: '递交包表尚未创建，请先执行 supabase/ethics_submission_packages.sql' };
+        }
+    },
+
     // ===== 伦理递交信批次 =====
 
     getEthicsLetters: async function(filters) {
