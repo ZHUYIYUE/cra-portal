@@ -21,7 +21,7 @@
 
 ### Deployment
 
-- 待部署至 GitHub Pages。
+- 已部署至 GitHub Pages。
 
 ## 2026-07-09
 
