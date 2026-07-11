@@ -778,6 +778,216 @@ body {
     }
 }
 
+/* ====== 培训管理 ====== */
+.training-page-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+.training-page-head h2 {
+    color: #243445;
+    font-size: 1.35em;
+    margin-bottom: 4px;
+}
+.training-page-head p {
+    color: #647386;
+    margin: 0;
+}
+.training-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.training-summary > div {
+    background: #fff;
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.training-summary strong {
+    display: block;
+    color: #243445;
+    font-size: 1.45em;
+}
+.training-summary span {
+    color: #647386;
+    font-size: 0.86em;
+}
+.training-summary .danger {
+    background: #fff1f1;
+    border-color: #f2b4b4;
+}
+.training-summary .danger strong { color: #c0392b; }
+.training-table-wrap {
+    overflow-x: auto;
+}
+.training-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92em;
+}
+.training-table th {
+    padding: 10px 8px;
+    text-align: left;
+    background: #f5f7fa;
+    border-bottom: 2px solid #e4ebf2;
+    color: #526273;
+    white-space: nowrap;
+}
+.training-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #edf1f5;
+    vertical-align: top;
+}
+.training-table small {
+    display: block;
+    color: #7b8794;
+    margin-top: 3px;
+}
+.training-plan-title {
+    font-weight: 700;
+    color: #243445;
+}
+.training-status {
+    display: inline-flex;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #eef2f6;
+    color: #526273;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.training-status.ok { background: #e8f7ee; color: #1f8a4c; }
+.training-status.warning { background: #fff4e5; color: #b86000; }
+.training-status.danger { background: #ffe9e9; color: #c0392b; }
+.training-progress {
+    min-width: 120px;
+}
+.training-progress span {
+    color: #526273;
+    font-weight: 700;
+    font-size: 0.88em;
+}
+.training-progress div {
+    height: 7px;
+    margin-top: 6px;
+    background: #edf1f5;
+    border-radius: 999px;
+    overflow: hidden;
+}
+.training-progress i {
+    display: block;
+    height: 100%;
+    background: #2d9cdb;
+    border-radius: 999px;
+}
+.training-actions {
+    white-space: nowrap;
+    text-align: right;
+}
+.training-empty,
+.training-empty-cell {
+    padding: 18px;
+    color: #647386;
+    background: #fbfcfe;
+    border: 1px dashed #ccd6e0;
+    border-radius: 8px;
+}
+.training-empty {
+    display: flex;
+    gap: 12px;
+}
+.training-empty strong,
+.training-empty span {
+    display: block;
+}
+.training-empty.warning {
+    color: #8a5a00;
+    border-color: #f2d28b;
+    background: #fff8e8;
+}
+.training-staff-picker {
+    padding: 12px;
+    margin: 12px 0;
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    background: #fbfcfe;
+}
+.training-section-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.training-section-title span {
+    color: #7b8794;
+    font-size: 0.86em;
+}
+.training-staff-list {
+    display: grid;
+    gap: 8px;
+}
+.training-staff-option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #e4ebf2;
+    border-radius: 8px;
+    background: #fff;
+}
+.training-staff-option strong,
+.training-staff-option small {
+    display: block;
+}
+.training-staff-option small {
+    color: #7b8794;
+    margin-top: 3px;
+}
+.training-plan-detail {
+    max-width: 980px;
+    display: grid;
+    gap: 12px;
+}
+.training-notes {
+    padding: 10px;
+    border-radius: 8px;
+    background: #f7f9fb;
+    color: #526273;
+}
+.training-record-table {
+    min-width: 880px;
+}
+.training-record-table select,
+.training-record-table input[type="date"],
+.training-record-table input[type="text"] {
+    width: 100%;
+    min-width: 110px;
+    padding: 6px;
+    border: 1px solid #d8e0e8;
+    border-radius: 6px;
+}
+.training-evidence-check {
+    white-space: nowrap;
+    color: #526273;
+}
+@media (max-width: 720px) {
+    .training-page-head {
+        flex-direction: column;
+    }
+    .training-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .training-table {
+        min-width: 920px;
+    }
+}
+
 /* ====== 待办事项 ====== */
 .task-list { margin-top: 20px; }
 .task-item {
