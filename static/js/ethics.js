@@ -402,6 +402,7 @@ window.renderEthicsPackagesCard = function(packages, missingTable) {
                     ${pkg.payment_required ? '<small>费用：' + window.escHtml(pkg.fee_status || '待确认') + '</small>' : ''}
                 </td>
                 <td class="ethics-package-actions">
+                    <button class="btn btn-text btn-sm" onclick="window.generateLettersFromEthicsPackage('${pkg.id}')" title="生成双递交信"><i class="fas fa-file-word" style="color:#2980b9;"></i></button>
                     <button class="btn btn-text btn-sm" onclick="window.viewEthicsPackage('${pkg.id}')" title="查看"><i class="fas fa-eye"></i></button>
                     <button class="btn btn-text btn-sm" onclick="window.openEthicsPackageForm('${pkg.id}')" title="编辑"><i class="fas fa-edit"></i></button>
                     <button class="btn btn-text btn-sm" onclick="window.deleteEthicsPackage('${pkg.id}')" title="删除"><i class="fas fa-trash" style="color:#e74c3c;"></i></button>
@@ -729,11 +730,73 @@ window.viewEthicsPackage = async function(id) {
             </table>
             ${pkg.notes ? '<div class="ethics-package-notes"><strong>备注：</strong>' + window.escHtml(pkg.notes) + '</div>' : ''}
             <div class="form-actions">
+                <button class="btn btn-primary" onclick="window.closeModal();window.generateLettersFromEthicsPackage('${pkg.id}')"><i class="fas fa-file-word"></i> 生成双递交信</button>
                 <button class="btn btn-primary" onclick="window.closeModal();window.openEthicsPackageForm('${pkg.id}')"><i class="fas fa-edit"></i> 编辑</button>
                 <button class="btn" onclick="window.closeModal()">关闭</button>
             </div>
         </div>
     `);
+};
+
+window.generateLettersFromEthicsPackage = async function(id) {
+    var ok = confirm('将根据该递交包自动生成两条递交信记录：CRA致PI、PI致伦理。已生成过的不会重复创建。继续吗？');
+    if (!ok) return;
+    window.showLoading();
+    try {
+        var res = await api.createEthicsLettersFromPackage(id);
+        if (!res.success) {
+            alert(res.error || '生成递交信失败');
+            return;
+        }
+        await window.loadEthics(document.getElementById('pageContent'));
+        window.showEthicsPackageLetterResult(res);
+    } catch (err) {
+        alert('生成递交信失败：' + err.message);
+    } finally {
+        window.hideLoading();
+    }
+};
+
+window.showEthicsPackageLetterResult = function(result) {
+    var labels = {
+        CRA_to_PI: 'CRA致PI递交信',
+        PI_to_Ethics: 'PI致伦理递交信'
+    };
+    var rows = (result.letters || []).map(function(letter) {
+        var status = letter.created ? '新生成' : '已存在';
+        var statusClass = letter.created ? 'ok' : 'warning';
+        return `
+            <div class="ethics-package-letter-row">
+                <div>
+                    <strong>${window.escHtml(labels[letter.type] || letter.type)}</strong>
+                    <span class="${statusClass}">${status}</span>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline" onclick="window.viewEthicsLetter('${letter.id}')"><i class="fas fa-eye"></i> 查看</button>
+                    <button class="btn btn-sm btn-primary" onclick="window.generateEthicsWord('${letter.id}')"><i class="fas fa-file-word"></i> 生成Word</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    var ids = (result.letters || []).map(function(letter) { return letter.id; });
+    window.openModal(`
+        <h3><i class="fas fa-file-word" style="color:#2980b9;"></i> 双递交信已准备</h3>
+        <div class="ethics-package-letter-result">
+            <p>${result.created_count ? '已创建 ' + result.created_count + ' 条递交信记录。' : '该递交包已有递交信记录，本次未重复创建。'}</p>
+            ${rows}
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick='window.generateEthicsWordBatch(${JSON.stringify(ids)})'><i class="fas fa-download"></i> 全部生成Word</button>
+                <button class="btn" onclick="window.closeModal()">关闭</button>
+            </div>
+        </div>
+    `);
+};
+
+window.generateEthicsWordBatch = async function(ids) {
+    ids = ids || [];
+    for (var i = 0; i < ids.length; i++) {
+        await window.generateEthicsWord(ids[i]);
+    }
 };
 
 window.deleteEthicsPackage = async function(id) {
