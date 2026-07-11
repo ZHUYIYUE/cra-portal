@@ -150,8 +150,8 @@ window.closeGlobalSearch = function() {
 
 window.loadGlobalSearchIndex = async function(force) {
     if (!force && window._globalSearchIndex) return window._globalSearchIndex;
-    var [projData, centerData, taskData, findingData, letterData] = await Promise.all([
-        api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters()
+    var [projData, centerData, taskData, findingData, letterData, trainingData] = await Promise.all([
+        api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getTrainingPlans()
     ]);
     var entries = [];
     var add = function(entry) {
@@ -186,6 +186,12 @@ window.loadGlobalSearchIndex = async function(force) {
             title: l.project_name || '未选择项目',
             meta: [l.center_name, l.submission_date, (l.items || []).length + '份文件'].filter(Boolean).join(' · '),
             extra: [l.submitter_name, l.ethics_committee].filter(Boolean).join(' ') });
+    });
+    (trainingData.plans || []).forEach(function(p) {
+        add({ type: 'training', icon: 'fa-graduation-cap', label: '培训', id: p.id,
+            title: p.title || '未命名培训计划',
+            meta: [p.project_name, p.center_name, p.due_date ? '截止 ' + p.due_date : '', p.status || ''].filter(Boolean).join(' · '),
+            extra: [p.doc_name_snapshot, p.version_snapshot, p.training_type, p.scope].filter(Boolean).join(' ') });
     });
 
     window._globalSearchIndex = entries;
@@ -260,6 +266,9 @@ window.openGlobalSearchResult = async function(index) {
     } else if (item.type === 'ethics') {
         await window.navigateTo('ethics');
         if (window.viewEthicsLetter) window.viewEthicsLetter(item.id);
+    } else if (item.type === 'training') {
+        await window.navigateTo('training');
+        if (window.viewTrainingPlan) window.viewTrainingPlan(item.id);
     }
 };
 
