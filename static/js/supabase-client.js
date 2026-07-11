@@ -83,6 +83,11 @@ function _isMissingEthicsPackagesTable(err) {
     return /ethics_submission_packages|ethics_submission_package_items|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
 }
 
+function _isMissingTrainingTables(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /training_plans|training_records|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
+}
+
 function _stripTaskPlanningFields(data) {
     var copy = Object.assign({}, data);
     delete copy.estimated_minutes;
@@ -481,6 +486,178 @@ window.api = {
 
     deleteStaff: async function(id) {
         return _delete('research_staff', id);
+    },
+
+    // ===== 培训管理 =====
+
+    getTrainingPlans: async function(filters) {
+        var params = { order: 'created_at.desc' };
+        if (filters) {
+            if (filters.project_id) params.project_id = 'eq.' + filters.project_id;
+            if (filters.center_id) params.center_id = 'eq.' + filters.center_id;
+        }
+        try {
+            var plans = await _select('training_plans', params);
+            var [projects, centers, records] = await Promise.all([
+                _select('projects', { select: 'id,name,code' }),
+                _select('centers', { select: 'id,name,code,project_id' }),
+                _select('training_records', { order: 'created_at.asc' })
+            ]);
+            var result = plans.map(function(plan) {
+                var p = projects.find(function(x) { return x.id === plan.project_id; });
+                var c = centers.find(function(x) { return x.id === plan.center_id; });
+                var planRecords = records.filter(function(r) { return r.training_plan_id === plan.id; });
+                var required = planRecords.filter(function(r) { return r.required !== false; });
+                var done = required.filter(function(r) { return r.status === '已完成' || r.status === '无需培训'; });
+                return Object.assign({}, plan, {
+                    project_name: p ? p.name : '',
+                    project_code: p ? p.code : '',
+                    center_name: c ? ((c.code || '') + ' ' + (c.name || '')).trim() : '',
+                    center_code: c ? c.code : '',
+                    records: planRecords,
+                    required_count: required.length,
+                    completed_count: done.length,
+                    completion_rate: required.length ? Math.round(done.length / required.length * 100) : 0
+                });
+            });
+            return { success: true, plans: result };
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: true, plans: [], missingTable: true };
+        }
+    },
+
+    getTrainingPlan: async function(id) {
+        try {
+            var plan = await _selectOne('training_plans', id);
+            if (!plan) return { success: false, error: '培训计划不存在' };
+            var [projects, centers, records] = await Promise.all([
+                _select('projects', { select: 'id,name,code,full_name' }),
+                _select('centers', { select: 'id,name,code,project_id' }),
+                _select('training_records', { training_plan_id: 'eq.' + id, order: 'created_at.asc' })
+            ]);
+            var p = projects.find(function(x) { return x.id === plan.project_id; });
+            var c = centers.find(function(x) { return x.id === plan.center_id; });
+            return {
+                success: true,
+                plan: Object.assign({}, plan, {
+                    project_name: p ? p.name : '',
+                    project_code: p ? p.code : '',
+                    project_full_name: p ? (p.full_name || p.name || '') : '',
+                    center_name: c ? ((c.code || '') + ' ' + (c.name || '')).trim() : '',
+                    center_code: c ? c.code : '',
+                    records: records
+                })
+            };
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: false, error: '培训管理表尚未创建，请先执行 supabase/training_management.sql' };
+        }
+    },
+
+    createTrainingPlan: async function(data) {
+        var id = _genId();
+        try {
+            await _insert('training_plans', {
+                id: id,
+                project_id: data.project_id || '',
+                center_id: data.center_id || '',
+                project_document_id: data.project_document_id || '',
+                title: data.title || '',
+                training_type: data.training_type || '其他',
+                scope: data.scope || '',
+                due_date: data.due_date || '',
+                status: data.status || '进行中',
+                doc_category_snapshot: data.doc_category_snapshot || '',
+                doc_name_snapshot: data.doc_name_snapshot || '',
+                version_snapshot: data.version_snapshot || '',
+                version_date_snapshot: data.version_date_snapshot || '',
+                notes: data.notes || '',
+                created_at: _now(),
+                updated_at: _now()
+            });
+            var staff = data.staff || [];
+            for (var i = 0; i < staff.length; i++) {
+                await _insert('training_records', {
+                    id: _genId(),
+                    training_plan_id: id,
+                    project_id: data.project_id || '',
+                    center_id: data.center_id || '',
+                    staff_id: staff[i].id || '',
+                    staff_name_snapshot: staff[i].name || '',
+                    staff_role_snapshot: staff[i].role || '',
+                    required: staff[i].required !== false,
+                    status: staff[i].status || '未开始',
+                    training_date: staff[i].training_date || '',
+                    evidence_collected: !!staff[i].evidence_collected,
+                    evidence_file_path: staff[i].evidence_file_path || '',
+                    notes: staff[i].notes || '',
+                    created_at: _now(),
+                    updated_at: _now()
+                });
+            }
+            return { success: true, id: id };
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: false, error: '培训管理表尚未创建，请先执行 supabase/training_management.sql' };
+        }
+    },
+
+    updateTrainingPlan: async function(id, data) {
+        try {
+            var update = { updated_at: _now() };
+            ['title', 'training_type', 'scope', 'due_date', 'status', 'notes'].forEach(function(f) {
+                if (f in data) update[f] = data[f];
+            });
+            await _update('training_plans', id, update);
+            return { success: true };
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: false, error: '培训管理表尚未创建，请先执行 supabase/training_management.sql' };
+        }
+    },
+
+    updateTrainingRecord: async function(id, data) {
+        try {
+            var record = await _selectOne('training_records', id);
+            if (!record) return { success: false, error: '培训记录不存在' };
+            var update = { updated_at: _now() };
+            ['status', 'training_date', 'evidence_collected', 'evidence_file_path', 'notes'].forEach(function(f) {
+                if (f in data) update[f] = data[f];
+            });
+            if ('evidence_collected' in update) update.evidence_collected = !!update.evidence_collected;
+            await _update('training_records', id, update);
+
+            var records = await _select('training_records', { training_plan_id: 'eq.' + record.training_plan_id });
+            var required = records.filter(function(r) { return r.required !== false; });
+            var done = required.filter(function(r) {
+                var status = r.id === id && update.status ? update.status : r.status;
+                return status === '已完成' || status === '无需培训';
+            });
+            var needsFollowup = records.some(function(r) {
+                var status = r.id === id && update.status ? update.status : r.status;
+                return status === '需跟进';
+            });
+            var planStatus = required.length && done.length === required.length ? '已完成' : (needsFollowup ? '需跟进' : '进行中');
+            await _update('training_plans', record.training_plan_id, { status: planStatus, updated_at: _now() });
+            return { success: true, plan_status: planStatus };
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: false, error: '培训管理表尚未创建，请先执行 supabase/training_management.sql' };
+        }
+    },
+
+    deleteTrainingPlan: async function(id) {
+        try {
+            var records = await _select('training_records', { training_plan_id: 'eq.' + id });
+            for (var i = 0; i < records.length; i++) {
+                await _delete('training_records', records[i].id);
+            }
+            return await _delete('training_plans', id);
+        } catch (err) {
+            if (!_isMissingTrainingTables(err)) throw err;
+            return { success: false, error: '培训管理表尚未创建，请先执行 supabase/training_management.sql' };
+        }
     },
 
     // ===== 伦理递交 =====
@@ -1247,7 +1424,7 @@ window.api = {
     backup: async function() {
         var tables = ['projects', 'centers', 'tasks', 'findings',
             'ethics_submissions', 'protocol_deviations', 'research_staff',
-            'startup_tasks', 'startup_logs'];
+            'startup_tasks', 'startup_logs', 'training_plans', 'training_records'];
         var backup = { backup_time: _now(), data: {} };
         for (var i = 0; i < tables.length; i++) {
             try {
