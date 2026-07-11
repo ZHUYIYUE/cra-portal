@@ -4,8 +4,8 @@
 let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
-    const [statsData, projData, centersData, tasksData, findingsData, lettersData] = await Promise.all([
-        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters()
+    const [statsData, projData, centersData, tasksData, findingsData, lettersData, trainingData] = await Promise.all([
+        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getTrainingPlans()
     ]);
     
     if (window.state) {
@@ -17,6 +17,7 @@ window.loadDashboard = async function(content) {
     const tasks = tasksData.tasks || [];
     const findings = findingsData.findings || [];
     const letters = lettersData.letters || [];
+    const trainingPlans = trainingData.plans || [];
     const s = statsData.stats || {};
     const todayStr = new Date().toISOString().split('T')[0];
     const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
@@ -27,6 +28,9 @@ window.loadDashboard = async function(content) {
     const waitingCrcTasks = openTasks.filter(t => t.task_status === 'waiting_crc');
     const activeFindings = findings.filter(f => !['Resolved', 'Closed'].includes(f.status));
     const overdueFindings = activeFindings.filter(f => f.due_date && f.due_date < todayStr);
+    const activeTrainingPlans = trainingPlans.filter(p => p.status !== '已完成');
+    const overdueTrainingPlans = activeTrainingPlans.filter(p => p.status === '需跟进' || (p.due_date && p.due_date < todayStr));
+    const dueWeekTrainingPlans = activeTrainingPlans.filter(p => p.due_date && p.due_date >= todayStr && p.due_date <= weekStr);
     const riskCenters = centers
         .filter(c => (c.task_count || 0) > 0 || (c.open_finding_count || 0) > 0)
         .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
@@ -71,6 +75,22 @@ window.loadDashboard = async function(content) {
         </span>
         <span class="wb-chip">${(l.items || []).length}份</span>
     </button>`).join('') || '<div class="wb-empty">暂无递交信记录。</div>';
+
+    const trainingRows = activeTrainingPlans
+        .slice()
+        .sort((a, b) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31'))
+        .slice(0, 5)
+        .map(p => {
+            const isRisk = p.status === '需跟进' || (p.due_date && p.due_date < todayStr);
+            const isSoon = p.due_date && p.due_date >= todayStr && p.due_date <= weekStr;
+            return `<button class="wb-list-row" onclick="window.navigateTo('training').then(function(){ window.viewTrainingPlan('${p.id}'); })">
+                <span class="wb-row-main">
+                    <strong>${window.escHtml(p.title || '未命名培训计划')}</strong>
+                    <small>${window.escHtml(p.center_name || p.project_name || '')} · ${p.completed_count || 0}/${p.required_count || 0} 已完成</small>
+                </span>
+                <span class="wb-chip ${isRisk ? 'danger' : isSoon ? 'warning' : ''}">${window.escHtml(p.due_date || p.status || '进行中')}</span>
+            </button>`;
+        }).join('') || '<div class="wb-empty">暂无需要跟进的培训计划。</div>';
     
     content.innerHTML = `
         <section class="workbench-shell">
@@ -92,6 +112,8 @@ window.loadDashboard = async function(content) {
                 <button class="wb-metric ${waitingCrcTasks.length ? 'warning' : ''}" onclick="window.openDashboardTasks('waiting_crc')"><strong>${waitingCrcTasks.length}</strong><span>等CRC</span></button>
                 <button class="wb-metric ${activeFindings.length ? 'danger' : ''}" onclick="window.navigateTo('findings')"><strong>${activeFindings.length}</strong><span>未关闭问题</span></button>
                 <button class="wb-metric ${overdueFindings.length ? 'danger' : ''}" onclick="window.navigateTo('findings')"><strong>${overdueFindings.length}</strong><span>逾期问题</span></button>
+                <button class="wb-metric ${overdueTrainingPlans.length ? 'danger' : ''}" onclick="window.navigateTo('training')"><strong>${overdueTrainingPlans.length}</strong><span>培训风险</span></button>
+                <button class="wb-metric ${dueWeekTrainingPlans.length ? 'warning' : ''}" onclick="window.navigateTo('training')"><strong>${dueWeekTrainingPlans.length}</strong><span>培训本周到期</span></button>
             </div>
             <div class="workbench-grid">
                 <div class="workbench-panel">
@@ -109,6 +131,10 @@ window.loadDashboard = async function(content) {
                 <div class="workbench-panel">
                     <div class="wb-panel-title"><i class="fas fa-file-contract"></i> 近期递交信</div>
                     ${letterRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-graduation-cap"></i> 培训跟进</div>
+                    ${trainingRows}
                 </div>
             </div>
         </section>
@@ -160,6 +186,7 @@ window.loadDashboard = async function(content) {
 
         ${s.overdue_tasks > 0 ? `<div class="alert-banner" style="background:#ffebee;border-left:4px solid #f44336;"><i class="fas fa-exclamation-triangle" style="color:#f44336;"></i> 有 <strong>${s.overdue_tasks}</strong> 个待办已逾期！</div>` : ''}
         ${s.due_soon > 0 ? `<div class="alert-banner" style="background:#fff8e1;border-left:4px solid #ff9800;"><i class="fas fa-clock" style="color:#ff9800;"></i> 有 <strong>${s.due_soon}</strong> 个任务将在7天内到期！</div>` : ''}
+        ${overdueTrainingPlans.length > 0 ? `<div class="alert-banner" style="background:#fff1f1;border-left:4px solid #e74c3c;"><i class="fas fa-graduation-cap" style="color:#e74c3c;"></i> 有 <strong>${overdueTrainingPlans.length}</strong> 个培训计划逾期或需跟进！</div>` : ''}
 
         <div class="card">
             <div class="card-header">
