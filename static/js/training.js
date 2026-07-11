@@ -402,7 +402,7 @@ window.viewTrainingPlan = async function(id) {
                 </table>
             </div>
             <div class="form-actions">
-                <button class="btn btn-primary" onclick="window.closeModal();window.openTrainingRecordWordComingSoon()"><i class="fas fa-file-word"></i> 生成培训记录</button>
+                <button class="btn btn-primary" onclick="window.generateTrainingRecordWord('${plan.id}')"><i class="fas fa-file-word"></i> 生成培训记录</button>
                 <button class="btn" onclick="window.closeModal()">关闭</button>
             </div>
         </div>
@@ -427,15 +427,176 @@ window.saveTrainingRecord = async function(recordId) {
     await window.loadTraining(document.getElementById('pageContent'));
 };
 
-window.openTrainingRecordWordComingSoon = function() {
-    window.openModal(`
-        <h3><i class="fas fa-file-word"></i> 培训记录 Word</h3>
-        <div class="training-empty">
-            <strong>下一步开发</strong>
-            <span>当前已完成培训计划和人员追踪。下一步会加入培训记录/签到表 Word 模板配置和生成。</span>
-        </div>
-        <div class="form-actions"><button class="btn" onclick="window.closeModal()">关闭</button></div>
-    `);
+window.formatTrainingDateCN = function(dateStr) {
+    if (!dateStr) return '';
+    var parts = String(dateStr).split('-');
+    if (parts.length !== 3) return dateStr;
+    return parseInt(parts[0], 10) + '年' + parseInt(parts[1], 10) + '月' + parseInt(parts[2], 10) + '日';
+};
+
+window.safeTrainingFileName = function(name) {
+    return (name || '培训记录').replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+};
+
+window.downloadTrainingWordHtml = function(html, fileName) {
+    var blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+    if (typeof saveAs === 'function') {
+        saveAs(blob, fileName);
+        return;
+    }
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+};
+
+window.generateTrainingRecordWord = async function(planId) {
+    window.showLoading();
+    try {
+        var res = await api.getTrainingPlan(planId);
+        if (!res.success) {
+            alert(res.error || '培训计划加载失败');
+            return;
+        }
+        var plan = res.plan;
+        var records = plan.records || [];
+        if (!records.length) {
+            alert('该培训计划暂无培训对象，无法生成培训记录。');
+            return;
+        }
+        var required = records.filter(function(r) { return r.required !== false; });
+        var completed = required.filter(function(r) { return r.status === '已完成' || r.status === '无需培训'; });
+        var today = new Date();
+        var todayStr = today.getFullYear() + '年' + (today.getMonth() + 1) + '月' + today.getDate() + '日';
+        var docText = [plan.doc_name_snapshot, plan.version_snapshot, plan.version_date_snapshot].filter(Boolean).join(' / ');
+        var rowHtml = records.map(function(r, idx) {
+            var trainingDate = window.formatTrainingDateCN(r.training_date || '');
+            return `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${window.escHtml(r.staff_name_snapshot || '')}</td>
+                    <td>${window.escHtml(r.staff_role_snapshot || '')}</td>
+                    <td>${window.escHtml(r.status || '未开始')}</td>
+                    <td>${window.escHtml(trainingDate)}</td>
+                    <td>${r.evidence_collected ? '是' : '否'}</td>
+                    <td>${window.escHtml(r.notes || '')}</td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            `;
+        }).join('');
+        var html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${window.escHtml(plan.title || '培训记录')}</title>
+<style>
+    @page { margin: 1.8cm; }
+    body { font-family: "SimSun", "Microsoft YaHei", Arial, sans-serif; color: #111; font-size: 11pt; }
+    h1 { text-align: center; font-size: 18pt; margin: 0 0 18px; }
+    h2 { font-size: 13pt; margin: 18px 0 8px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { border: 1px solid #333; padding: 6px 7px; vertical-align: middle; word-break: break-word; }
+    th { background: #f2f2f2; font-weight: bold; text-align: center; }
+    .meta td:first-child { width: 18%; background: #f7f7f7; font-weight: bold; text-align: center; }
+    .meta td:nth-child(2) { width: 32%; }
+    .meta td:nth-child(3) { width: 18%; background: #f7f7f7; font-weight: bold; text-align: center; }
+    .meta td:nth-child(4) { width: 32%; }
+    .trainees th:nth-child(1), .trainees td:nth-child(1) { width: 5%; text-align: center; }
+    .trainees th:nth-child(2), .trainees td:nth-child(2) { width: 12%; }
+    .trainees th:nth-child(3), .trainees td:nth-child(3) { width: 13%; }
+    .trainees th:nth-child(4), .trainees td:nth-child(4) { width: 10%; text-align: center; }
+    .trainees th:nth-child(5), .trainees td:nth-child(5) { width: 12%; text-align: center; }
+    .trainees th:nth-child(6), .trainees td:nth-child(6) { width: 9%; text-align: center; }
+    .trainees th:nth-child(8), .trainees td:nth-child(8) { width: 12%; height: 30px; }
+    .trainees th:nth-child(9), .trainees td:nth-child(9) { width: 12%; }
+    .sign { margin-top: 28px; display: table; width: 100%; }
+    .sign div { display: table-cell; width: 50%; padding-top: 12px; }
+    .muted { color: #555; line-height: 1.6; }
+</style>
+</head>
+<body>
+    <h1>培训记录/签到表</h1>
+    <table class="meta">
+        <tr>
+            <td>培训标题</td>
+            <td colspan="3">${window.escHtml(plan.title || '')}</td>
+        </tr>
+        <tr>
+            <td>项目名称</td>
+            <td>${window.escHtml(plan.project_full_name || plan.project_name || '')}</td>
+            <td>项目编号</td>
+            <td>${window.escHtml(plan.project_code || '')}</td>
+        </tr>
+        <tr>
+            <td>中心</td>
+            <td>${window.escHtml(plan.center_name || '')}</td>
+            <td>培训类型</td>
+            <td>${window.escHtml(plan.training_type || '')}</td>
+        </tr>
+        <tr>
+            <td>关联文件</td>
+            <td colspan="3">${window.escHtml(docText || '')}</td>
+        </tr>
+        <tr>
+            <td>培训范围</td>
+            <td>${window.escHtml(plan.scope || '')}</td>
+            <td>完成截止日期</td>
+            <td>${window.escHtml(window.formatTrainingDateCN(plan.due_date || ''))}</td>
+        </tr>
+        <tr>
+            <td>计划状态</td>
+            <td>${window.escHtml(plan.status || '')}</td>
+            <td>完成人数</td>
+            <td>${completed.length} / ${required.length}</td>
+        </tr>
+    </table>
+
+    <h2>培训内容</h2>
+    <p class="muted">本次培训围绕上述项目文件及相关执行要求开展。培训对象应理解文件版本、适用范围、关键变更及其在本中心执行中的要求。</p>
+
+    <h2>培训对象及完成情况</h2>
+    <table class="trainees">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>姓名</th>
+                <th>角色/职责</th>
+                <th>状态</th>
+                <th>培训日期</th>
+                <th>证据收集</th>
+                <th>备注</th>
+                <th>签名</th>
+                <th>签署日期</th>
+            </tr>
+        </thead>
+        <tbody>${rowHtml}</tbody>
+    </table>
+
+    <div class="sign">
+        <div>培训人/CRA签名：____________________</div>
+        <div>日期：____________________</div>
+    </div>
+    <div class="sign">
+        <div>PI确认：____________________</div>
+        <div>日期：____________________</div>
+    </div>
+    <p class="muted">生成日期：${todayStr}</p>
+</body>
+</html>`;
+        var fileName = window.safeTrainingFileName('培训记录_' + (plan.project_name || '') + '_' + (plan.center_name || '') + '_' + (plan.title || '') + '.doc');
+        window.downloadTrainingWordHtml(html, fileName);
+        window.showToast('培训记录 Word 已生成');
+    } catch (err) {
+        alert('生成培训记录失败：' + err.message);
+    } finally {
+        window.hideLoading();
+    }
 };
 
 window.deleteTrainingPlan = async function(id) {
