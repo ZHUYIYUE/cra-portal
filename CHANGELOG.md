@@ -22,7 +22,7 @@
 ### Database
 
 - 递交包生成双递交信无新增迁移，通过递交信备注中的递交包标识建立轻量关联；后续如需更严谨追踪可再为 `ethics_letters` 增加 `package_id` 字段。
-- 培训管理需要执行 `supabase/training_management.sql` 后才能写入 Supabase。
+- 已在 Supabase 执行 `supabase/training_management.sql`，并通过 REST 验证 `training_plans`、`training_records` 表可读。
 
 ### Deployment
 
