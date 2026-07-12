@@ -4,8 +4,8 @@
 let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
-    const [statsData, projData, centersData, tasksData, findingsData, lettersData, trainingData] = await Promise.all([
-        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getTrainingPlans()
+    const [statsData, projData, centersData, tasksData, findingsData, lettersData, packagesData, trainingData] = await Promise.all([
+        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getEthicsSubmissionPackages(), api.getTrainingPlans()
     ]);
     
     if (window.state) {
@@ -17,6 +17,7 @@ window.loadDashboard = async function(content) {
     const tasks = tasksData.tasks || [];
     const findings = findingsData.findings || [];
     const letters = lettersData.letters || [];
+    const ethicsPackages = packagesData.packages || [];
     const trainingPlans = trainingData.plans || [];
     const s = statsData.stats || {};
     const todayStr = new Date().toISOString().split('T')[0];
@@ -31,6 +32,11 @@ window.loadDashboard = async function(content) {
     const activeTrainingPlans = trainingPlans.filter(p => p.status !== '已完成');
     const overdueTrainingPlans = activeTrainingPlans.filter(p => p.status === '需跟进' || (p.due_date && p.due_date < todayStr));
     const dueWeekTrainingPlans = activeTrainingPlans.filter(p => p.due_date && p.due_date >= todayStr && p.due_date <= weekStr);
+    const ethicsFollowups = ethicsPackages.filter(function(pkg) {
+        return pkg.status !== '已完成' && (!window.getEthicsPackageNextStep || window.getEthicsPackageNextStep(pkg));
+    }).sort(function(a, b) {
+        return (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
+    });
     const riskCenters = centers
         .filter(c => (c.task_count || 0) > 0 || (c.open_finding_count || 0) > 0)
         .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
@@ -91,6 +97,18 @@ window.loadDashboard = async function(content) {
                 <span class="wb-chip ${isRisk ? 'danger' : isSoon ? 'warning' : ''}">${window.escHtml(p.due_date || p.status || '进行中')}</span>
             </button>`;
         }).join('') || '<div class="wb-empty">暂无需要跟进的培训计划。</div>';
+
+    const ethicsRows = ethicsFollowups.slice(0, 5).map(function(pkg) {
+        var step = window.getEthicsPackageNextStep ? window.getEthicsPackageNextStep(pkg) : null;
+        var isOverdue = pkg.due_date && pkg.due_date < todayStr;
+        return `<button class="wb-list-row" onclick="window.openDashboardEthicsPackage('${pkg.id}')">
+            <span class="wb-row-main">
+                <strong>${window.escHtml(pkg.package_name || '未命名递交包')}</strong>
+                <small>${window.escHtml(pkg.center_name || pkg.project_name || '')} · ${window.escHtml(step ? step.label : '待跟进')}</small>
+            </span>
+            <span class="wb-chip ${isOverdue ? 'danger' : ''}">${pkg.due_date || window.escHtml(pkg.status || '进行中')}</span>
+        </button>`;
+    }).join('') || '<div class="wb-empty">暂无需要跟进的伦理递交包。</div>';
     
     content.innerHTML = `
         <section class="workbench-shell">
@@ -114,6 +132,7 @@ window.loadDashboard = async function(content) {
                 <button class="wb-metric ${overdueFindings.length ? 'danger' : ''}" onclick="window.navigateTo('findings')"><strong>${overdueFindings.length}</strong><span>逾期问题</span></button>
                 <button class="wb-metric ${overdueTrainingPlans.length ? 'danger' : ''}" onclick="window.navigateTo('training')"><strong>${overdueTrainingPlans.length}</strong><span>培训风险</span></button>
                 <button class="wb-metric ${dueWeekTrainingPlans.length ? 'warning' : ''}" onclick="window.navigateTo('training')"><strong>${dueWeekTrainingPlans.length}</strong><span>培训本周到期</span></button>
+                <button class="wb-metric ${ethicsFollowups.length ? 'warning' : ''}" onclick="window.navigateTo('ethics')"><strong>${ethicsFollowups.length}</strong><span>伦理待跟进</span></button>
             </div>
             <div class="workbench-grid">
                 <div class="workbench-panel">
@@ -131,6 +150,10 @@ window.loadDashboard = async function(content) {
                 <div class="workbench-panel">
                     <div class="wb-panel-title"><i class="fas fa-file-contract"></i> 近期递交信</div>
                     ${letterRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-scale-balanced"></i> 伦理闭环</div>
+                    ${ethicsRows}
                 </div>
                 <div class="workbench-panel">
                     <div class="wb-panel-title"><i class="fas fa-graduation-cap"></i> 培训跟进</div>
@@ -232,6 +255,11 @@ window.openDashboardTasks = function(filter) {
     window.navigateTo('tasks').then(function() {
         if (window.applyTaskFilter) window.applyTaskFilter(filter);
     });
+};
+
+window.openDashboardEthicsPackage = async function(id) {
+    await window.navigateTo('ethics');
+    if (window.viewEthicsPackage) window.viewEthicsPackage(id);
 };
 window.renderCal = async function() {
     // 获取所有未完成任务
