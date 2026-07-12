@@ -337,15 +337,31 @@ window.loadEthics = async function(content) {
 // ========== 中心递交包进度 ==========
 
 window.getEthicsPackageNextAction = function(pkg) {
-    if (pkg.status === '已完成') return '归档递交证据';
-    if (!pkg.sent_to_center_date) return '打印 CTA to PI 并寄给中心';
-    if (!pkg.pi_signed_date) return '跟进 PI 签署递交信';
-    if (!pkg.ec_submitted_date) return '确认 CRC/PI 递交伦理';
-    if (!pkg.ec_received_date) return '收集伦理签收证明';
-    if (pkg.review_type === '备案' && !pkg.receipt_received_date) return '收集备案受理回执/签收递交信';
-    if ((pkg.review_type === '会审' || pkg.review_type === '快审') && !pkg.approval_received_date) return '跟进伦理批件或意见函';
-    if (pkg.payment_required && pkg.fee_status !== '已收票') return '跟进伦理费缴费/发票';
-    return '确认递交包完成状态';
+    var step = window.getEthicsPackageNextStep(pkg);
+    return step ? step.label : '归档递交证据';
+};
+
+window.getEthicsPackageNextStep = function(pkg) {
+    if (pkg.status === '已完成') return null;
+    if (!pkg.sent_to_center_date) return { key: 'sent', label: '打印 CTA to PI 并寄给中心', dateLabel: '寄给中心日期', status: 'CTA to PI已寄出' };
+    if (!pkg.pi_signed_date) return { key: 'pi_signed', label: '跟进 PI 签署递交信', dateLabel: 'PI签署日期', status: 'PI已签署' };
+    if (!pkg.ec_submitted_date) return { key: 'ec_submitted', label: '确认 CRC/PI 已递交伦理', dateLabel: '递交伦理日期', status: '已递交伦理' };
+    if (!pkg.ec_received_date) return { key: 'ec_received', label: '收集伦理签收证明', dateLabel: '伦理签收日期', status: '伦理已签收' };
+    if (pkg.review_type === '待确认' || !pkg.review_type) return { key: 'review_type', label: '确认伦理审查方式', dateLabel: '', status: '伦理已签收' };
+    if (pkg.review_type === '备案' && !pkg.receipt_received_date) return { key: 'receipt', label: '收集备案受理回执或签收递交信', dateLabel: '备案回执日期', status: '已完成' };
+    if ((pkg.review_type === '会审' || pkg.review_type === '快审') && !pkg.approval_received_date) return { key: 'approval', label: '跟进伦理批件或意见函', dateLabel: '批件/意见函日期', status: '已完成' };
+    if (pkg.payment_required && pkg.fee_status !== '已收票') return { key: 'fee', label: '跟进伦理费缴费/发票', dateLabel: '', status: pkg.status || '审查中' };
+    return { key: 'complete', label: '确认递交包完成并归档证据', dateLabel: '', status: '已完成' };
+};
+
+window.getEthicsPackageTimeline = function(pkg) {
+    return [
+        ['寄给中心', pkg.sent_to_center_date],
+        ['PI签署', pkg.pi_signed_date],
+        ['递交伦理', pkg.ec_submitted_date],
+        ['伦理签收', pkg.ec_received_date],
+        [pkg.review_type === '备案' ? '备案回执' : '批件/意见函', pkg.review_type === '备案' ? pkg.receipt_received_date : pkg.approval_received_date]
+    ];
 };
 
 window.getEthicsPackageTone = function(pkg) {
@@ -396,7 +412,10 @@ window.renderEthicsPackagesCard = function(packages, missingTable) {
                 <td><span class="ethics-package-status ${tone}">${window.escHtml(pkg.status || '待准备')}</span></td>
                 <td>${window.escHtml(pkg.review_type || '待确认')}</td>
                 <td>${pkg.due_date || '-'}</td>
-                <td>${(pkg.items || []).length} 份</td>
+                <td>
+                    <div>${pkg.ec_received_date ? '签收：' + pkg.ec_received_date : '未签收'}</div>
+                    <small>${pkg.review_type === '备案' ? (pkg.receipt_received_date ? '回执：' + pkg.receipt_received_date : '待回执') : ((pkg.review_type === '会审' || pkg.review_type === '快审') ? (pkg.approval_received_date ? '结果：' + pkg.approval_received_date : '待结果') : '待确认审查方式')}</small>
+                </td>
                 <td>
                     <div>${window.escHtml(window.getEthicsPackageNextAction(pkg))}</div>
                     ${pkg.payment_required ? '<small>费用：' + window.escHtml(pkg.fee_status || '待确认') + '</small>' : ''}
@@ -439,7 +458,7 @@ window.renderEthicsPackagesCard = function(packages, missingTable) {
                             <th>状态</th>
                             <th>审查方式</th>
                             <th>截止</th>
-                            <th>文件</th>
+                            <th>签收/结果</th>
                             <th>下一步</th>
                             <th></th>
                         </tr>
@@ -699,7 +718,11 @@ window.submitEthicsPackage = async function(e, editId) {
         return false;
     }
     window.closeModal();
-    await window.loadEthics(document.getElementById('pageContent'));
+    if (window.state && window.state.currentPage === 'center-detail' && window.state.currentCenterId === data.center_id) {
+        await window.refreshCacheAndTab(['ethics-packages']);
+    } else {
+        await window.loadEthics(document.getElementById('pageContent'));
+    }
     window.showToast(editId ? '递交包已更新' : '递交包已创建');
     return false;
 };

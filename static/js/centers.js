@@ -26,10 +26,11 @@ window.loadCenterDetail = async function(content) {
         content.innerHTML = '<p style="color:#999;">未选择中心</p>';
         return;
     }
-    const [centerData, staffData, ethicsData, pdsData, tasksData, findingsData] = await Promise.all([
+    const [centerData, staffData, ethicsData, ethicsPackagesData, pdsData, tasksData, findingsData] = await Promise.all([
         api.getCenter(centerId),
         api.getStaff(centerId),
         api.getEthics(centerId),
+        api.getEthicsSubmissionPackages({center_id: centerId}),
         api.getPDs(centerId),
         api.getTasks({center_id: centerId}),
         api.getFindings({center_id: centerId})
@@ -37,13 +38,14 @@ window.loadCenterDetail = async function(content) {
     const center = centerData.center || {};
     const staff = staffData.staff || [];
     const ethics = ethicsData.ethics || [];
+    const ethicsPackages = ethicsPackagesData.packages || [];
     const pds = pdsData.pds || [];
     const centerTasks = tasksData.tasks || [];
     const centerFindings = findingsData.findings || [];
     const today = new Date().toISOString().split('T')[0];
 
     // 缓存数据，避免切换 Tab 重复请求
-    window._cdc = { center, staff, ethics, pds, centerTasks, centerFindings, today };
+    window._cdc = { center, staff, ethics, ethicsPackages, pds, centerTasks, centerFindings, today };
 
     if (window.state && !window.state.centerDetailTab) window.state.centerDetailTab = '概览';
 
@@ -92,6 +94,7 @@ window.refreshCacheAndTab = async function(tabs) {
     const needs = [];
     if (tabs.includes('staff')) needs.push(api.getStaff(centerId).then(function(d) { window._cdc.staff = d.staff || []; }));
     if (tabs.includes('ethics')) needs.push(api.getEthics(centerId).then(function(d) { window._cdc.ethics = d.ethics || []; }));
+    if (tabs.includes('ethics-packages')) needs.push(api.getEthicsSubmissionPackages({center_id: centerId}).then(function(d) { window._cdc.ethicsPackages = d.packages || []; }));
     if (tabs.includes('pds')) needs.push(api.getPDs(centerId).then(function(d) { window._cdc.pds = d.pds || []; }));
     if (tabs.includes('tasks')) needs.push(api.getTasks({center_id: centerId}).then(function(d) { window._cdc.centerTasks = d.tasks || []; }));
     if (tabs.includes('findings')) needs.push(api.getFindings({center_id: centerId}).then(function(d) { window._cdc.centerFindings = d.findings || []; }));
@@ -100,12 +103,12 @@ window.refreshCacheAndTab = async function(tabs) {
 };
 
 window.renderCenterTabContent = function(tab, data) {
-    const { center, staff, ethics, pds, centerTasks, centerFindings, today } = data;
+    const { center, staff, ethics, ethicsPackages, pds, centerTasks, centerFindings, today } = data;
     const el = document.getElementById('center-tab-content');
     if (!el) return;
     if (tab === '概览') window.renderCenterTabOverview(el, data);
     else if (tab === '研究人员') window.renderCenterTabStaff(el, staff, center.id);
-    else if (tab === '伦理递交') window.renderCenterTabEthics(el, ethics, center.id);
+    else if (tab === '伦理递交') window.renderCenterTabEthics(el, ethics, center.id, ethicsPackages || []);
     else if (tab === '方案偏离') window.renderCenterTabPDs(el, pds, center.id);
     else if (tab === '关联数据') window.renderCenterTabLinks(el, centerTasks, centerFindings, center.id, today);
 };
@@ -320,7 +323,8 @@ window.renderCenterTabStaff = function(el, staffList, centerId) {
 
 // ========== Tab 3: 伦理递交 ==========
 
-window.renderCenterTabEthics = function(el, ethicsList, centerId) {
+window.renderCenterTabEthics = function(el, ethicsList, centerId, packages) {
+    packages = packages || [];
     const typeColor = t => {
         const m = {'初始伦理':'#d46b08','修正案':'#722ed1','方案偏离':'#cf1322','备案类文件':'#1890ff','SAE报告':'#d46b08','年度报告':'#389e0d','结题报告':'#1d39c4'};
         return m[t] || '#5a6a7a';
@@ -329,7 +333,37 @@ window.renderCenterTabEthics = function(el, ethicsList, centerId) {
     const approvalBadge = d => d
         ? `<span class="cd-badge cd-badge-approved"><i class="fas fa-check"></i> ${d}</span>`
         : `<span class="cd-badge cd-badge-pending"><i class="fas fa-clock"></i> 待批</span>`;
+    const packageRows = packages.length ? packages.map(function(pkg) {
+        const next = window.getEthicsPackageNextAction ? window.getEthicsPackageNextAction(pkg) : '查看递交包';
+        const result = pkg.review_type === '备案'
+            ? (pkg.receipt_received_date ? '备案回执：' + pkg.receipt_received_date : '待备案回执')
+            : ((pkg.review_type === '会审' || pkg.review_type === '快审')
+                ? (pkg.approval_received_date ? '批件/意见函：' + pkg.approval_received_date : '待批件/意见函')
+                : '待确认审查方式');
+        return `
+            <div class="center-ethics-package-row">
+                <div class="center-ethics-package-main">
+                    <strong>${window.escHtml(pkg.package_name || '未命名递交包')}</strong>
+                    <small>${window.escHtml(pkg.status || '待准备')} · ${window.escHtml(pkg.review_type || '待确认')} · ${window.escHtml(result)}</small>
+                    <span><i class="fas fa-arrow-right"></i> ${window.escHtml(next)}</span>
+                </div>
+                <div class="center-ethics-package-actions">
+                    <button class="btn btn-text btn-sm" onclick="window.viewEthicsPackage('${pkg.id}')"><i class="fas fa-eye"></i> 查看</button>
+                    <button class="btn btn-text btn-sm" onclick="window.openEthicsPackageForm('${pkg.id}')"><i class="fas fa-pen"></i> 更新</button>
+                </div>
+            </div>`;
+    }).join('') : '<div class="center-ethics-package-empty">暂无关联递交包。中心的伦理签收、审查方式和批件/回执将通过递交包统一追踪。</div>';
     el.innerHTML = `
+        <div class="cd-section center-ethics-package-section">
+            <div class="center-ethics-package-head">
+                <div>
+                    <span><i class="fas fa-layer-group"></i> 中心递交包闭环</span>
+                    <small>与本中心伦理管理共用同一流程数据，不重复录入。</small>
+                </div>
+                <button class="btn btn-sm btn-outline" onclick="window.navigateTo('ethics')"><i class="fas fa-list"></i> 全部递交包</button>
+            </div>
+            ${packageRows}
+        </div>
         <div class="cd-section">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
                 <div><span style="font-size:1em;font-weight:600;color:#2c3e50;"><i class="fas fa-file-alt" style="color:#3498db;margin-right:6px;"></i>伦理递交</span>

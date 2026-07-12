@@ -106,6 +106,56 @@ body {
     gap: 10px;
 }
 
+/* ====== 中心伦理递交包闭环 ====== */
+.center-ethics-package-section {
+    border: 1px solid #cfe3f4;
+    background: #f8fbfe;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 16px;
+}
+.center-ethics-package-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.center-ethics-package-head span {
+    display: block;
+    font-weight: 700;
+    color: #245b83;
+}
+.center-ethics-package-head span i { color: #3498db; margin-right: 5px; }
+.center-ethics-package-head small {
+    display: block;
+    margin-top: 3px;
+    color: #71808f;
+    font-size: 0.8em;
+}
+.center-ethics-package-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid #dfeaf3;
+}
+.center-ethics-package-main { min-width: 0; }
+.center-ethics-package-main strong,
+.center-ethics-package-main small,
+.center-ethics-package-main span { display: block; }
+.center-ethics-package-main strong { color: #2c3e50; font-size: 0.9em; }
+.center-ethics-package-main small { color: #6f7f8e; margin-top: 3px; font-size: 0.8em; }
+.center-ethics-package-main span { color: #2f6f9e; margin-top: 4px; font-size: 0.82em; }
+.center-ethics-package-actions { display: flex; flex-shrink: 0; gap: 2px; }
+.center-ethics-package-empty { color: #8190a0; font-size: 0.86em; padding: 8px 0 2px; }
+@media (max-width: 600px) {
+    .center-ethics-package-head,
+    .center-ethics-package-row { align-items: flex-start; flex-direction: column; }
+    .center-ethics-package-actions { align-self: flex-end; }
+}
+
 /* ====== 统计卡片网格 ====== */
 .stats-grid {
     display: grid;
