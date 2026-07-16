@@ -106,6 +106,42 @@ body {
     gap: 10px;
 }
 
+/* ====== 中心工作事项 ====== */
+.work-items-shell { display:flex; flex-direction:column; gap:16px; }
+.work-items-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.work-items-head h2 { color:#243445; font-size:1.25em; }
+.work-items-head h2 i { color:#3498db; margin-right:6px; }
+.work-items-head p { color:#71808f; margin-top:5px; font-size:.9em; }
+.work-items-summary { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:10px; }
+.work-items-summary > div { background:#fff; border:1px solid #e1e8ef; border-radius:9px; padding:13px; }
+.work-items-summary strong { display:block; color:#26384a; font-size:1.5em; }
+.work-items-summary span { display:block; color:#71808f; font-size:.82em; margin-top:3px; }
+.work-items-summary .danger { background:#fff5f5; border-color:#f0c1c1; }
+.work-items-summary .danger strong { color:#c33a32; }
+.work-items-summary .warning { background:#fff9ee; border-color:#efd49b; }
+.work-items-summary .warning strong { color:#a96800; }
+.work-items-list { display:grid; gap:10px; }
+.work-item-card { cursor:pointer; background:#fff; border:1px solid #e1e8ef; border-left:4px solid #93b8d8; border-radius:10px; padding:14px; transition:box-shadow .18s, transform .18s; }
+.work-item-card:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(31,45,61,.09); }
+.work-item-card.danger { border-left-color:#d94b45; background:#fffdfd; }
+.work-item-card.warning { border-left-color:#d99000; }
+.work-item-card.waiting { border-left-color:#6f8eb3; }
+.work-item-card.ok { border-left-color:#35a26a; }
+.work-item-card-top { display:flex; justify-content:space-between; gap:12px; }
+.work-item-card-top h3 { color:#26384a; font-size:1em; margin:6px 0 4px; }
+.work-item-card-top p { color:#71808f; font-size:.82em; }
+.work-item-type { color:#286b9f; background:#eaf4fc; border-radius:99px; padding:2px 8px; font-size:.76em; }
+.work-item-status { align-self:flex-start; color:#587084; background:#f1f5f8; border-radius:99px; padding:3px 8px; font-size:.78em; white-space:nowrap; }
+.work-item-status.danger { color:#b92f29; background:#fff0f0; }.work-item-status.warning { color:#9b6200; background:#fff7e4; }.work-item-status.waiting { color:#486a90; background:#eef4fa; }.work-item-status.ok { color:#278352; background:#eefaf2; }
+.work-item-next { margin-top:11px; display:flex; gap:8px; color:#40566a; font-size:.9em; }.work-item-next i { color:#3498db; margin-top:2px; }
+.work-item-meta { margin-top:10px; display:flex; flex-wrap:wrap; gap:10px; color:#788796; font-size:.8em; }.danger-text { color:#c33a32; font-weight:600; }
+.work-item-progress { height:5px; overflow:hidden; background:#e9eff4; border-radius:99px; margin-top:11px; }.work-item-progress span { display:block; height:100%; background:#3498db; border-radius:inherit; }
+.work-items-empty { padding:28px; display:flex; align-items:center; justify-content:center; gap:13px; color:#7b8997; text-align:left; }.work-items-empty i { font-size:1.8em; color:#aac0d2; }.work-items-empty strong,.work-items-empty span { display:block; }.work-items-empty span { font-size:.86em; margin-top:3px; }.work-items-empty.warning { background:#fff9ee; border:1px solid #efd49b; border-radius:9px; }
+.work-item-form { display:grid; gap:12px; }.work-item-steps { border:1px solid #dfe8f0; border-radius:8px; padding:10px; }.work-item-steps-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; color:#34495e; }.work-item-step-edit { display:grid; grid-template-columns:22px minmax(0,1fr) 140px 30px; gap:6px; align-items:center; margin-top:6px; }.work-item-step-edit input:not([type=checkbox]) { width:100%; padding:7px 8px; border:1px solid #d9e1e8; border-radius:6px; font:inherit; font-size:.88em; }.work-item-step-empty { padding:8px 0; color:#8a98a5; font-size:.86em; }
+.work-item-detail-meta { display:flex; flex-wrap:wrap; gap:7px; color:#607285; font-size:.82em; margin:8px 0 14px; }.work-item-detail-meta span { background:#f1f5f8; padding:4px 7px; border-radius:5px; }.work-item-detail-next { background:#f1f8fd; border-left:3px solid #3498db; padding:10px; border-radius:5px; }.work-item-detail-next p { color:#2f465a; margin:5px 0; }.work-item-detail-next small { color:#6a7d8d; }.work-item-detail-section { margin-top:14px; }.work-item-detail-section > strong { color:#34495e; }.work-item-detail-section ul { list-style:none; margin:7px 0 0; padding:0; }.work-item-detail-section li { padding:6px 0; border-bottom:1px solid #eef2f5; color:#54687a; font-size:.88em; }.work-item-detail-section li.done { color:#8a99a5; text-decoration:line-through; }.work-item-detail-section li i { color:#3498db; margin-right:5px; }.work-item-detail-section li.done i { color:#35a26a; }.work-item-detail-section li small { float:right; color:#8997a4; }
+.center-work-items-list { display:grid; gap:8px; }.center-work-item-row { cursor:pointer; display:flex; justify-content:space-between; gap:12px; padding:11px; border:1px solid #e1e8ef; border-left:3px solid #91b7d7; border-radius:8px; background:#fff; }.center-work-item-row.danger { border-left-color:#d94b45; }.center-work-item-row.warning { border-left-color:#d99000; }.center-work-item-row.waiting { border-left-color:#6f8eb3; }.center-work-item-row strong,.center-work-item-row small,.center-work-item-row span { display:block; }.center-work-item-row strong { color:#314558; font-size:.9em; }.center-work-item-row small { color:#788796; font-size:.78em; margin-top:3px; }.center-work-item-row span { color:#3978a8; font-size:.82em; margin-top:5px; }.center-work-item-side { display:flex; flex-direction:column; align-items:flex-end; gap:3px; white-space:nowrap; }
+@media (max-width:600px) { .work-items-head,.work-item-card-top,.center-work-item-row { flex-direction:column; }.work-items-summary { grid-template-columns:1fr; }.work-item-step-edit { grid-template-columns:22px minmax(0,1fr) 30px; }.work-item-step-edit input[type=date] { grid-column:2; }.center-work-item-side { align-items:flex-start; } }
+
 /* ====== 中心伦理递交包闭环 ====== */
 .center-ethics-package-section {
     border: 1px solid #cfe3f4;

@@ -71,7 +71,7 @@ window.navigateTo = async function(page) {
         item.classList.toggle('active', item.dataset.page === page);
     });
     
-    var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交', training: '培训管理', quality: '数据质量' };
+    var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', 'work-items': '中心工作事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交', training: '培训管理', quality: '数据质量' };
     var pageTitle = document.getElementById('pageTitle');
     if (pageTitle) pageTitle.textContent = titles[page] || '工作台';
     
@@ -93,6 +93,7 @@ window.loadPage = async function(page) {
         case 'dashboard': await window.loadDashboard(content); break;
         case 'projects': await window.loadProjects(content); break;
         case 'tasks': await window.loadTasks(content); break;
+        case 'work-items': await window.loadWorkItems(content); break;
         case 'recommend': await window.loadRecommend(content); break;
         case 'startup': await window.loadStartup(content); break;
         case 'findings': await window.loadFindings(content); break;
@@ -150,8 +151,8 @@ window.closeGlobalSearch = function() {
 
 window.loadGlobalSearchIndex = async function(force) {
     if (!force && window._globalSearchIndex) return window._globalSearchIndex;
-    var [projData, centerData, taskData, findingData, letterData, trainingData] = await Promise.all([
-        api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getTrainingPlans()
+    var [projData, centerData, taskData, findingData, letterData, workItemData, trainingData] = await Promise.all([
+        api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getCenterWorkItems(), api.getTrainingPlans()
     ]);
     var entries = [];
     var add = function(entry) {
@@ -186,6 +187,12 @@ window.loadGlobalSearchIndex = async function(force) {
             title: l.project_name || '未选择项目',
             meta: [l.center_name, l.submission_date, (l.items || []).length + '份文件'].filter(Boolean).join(' · '),
             extra: [l.submitter_name, l.ethics_committee].filter(Boolean).join(' ') });
+    });
+    (workItemData.items || []).forEach(function(item) {
+        add({ type: 'work-item', icon: 'fa-list-check', label: '中心事项', id: item.id,
+            title: item.title || '未命名中心事项',
+            meta: [item.project_name, item.center_name, item.status, item.follow_up_date ? '催办 ' + item.follow_up_date : ''].filter(Boolean).join(' · '),
+            extra: [item.item_type, item.next_action, item.waiting_for, item.notes].filter(Boolean).join(' ') });
     });
     (trainingData.plans || []).forEach(function(p) {
         add({ type: 'training', icon: 'fa-graduation-cap', label: '培训', id: p.id,
@@ -269,6 +276,9 @@ window.openGlobalSearchResult = async function(index) {
     } else if (item.type === 'training') {
         await window.navigateTo('training');
         if (window.viewTrainingPlan) window.viewTrainingPlan(item.id);
+    } else if (item.type === 'work-item') {
+        await window.navigateTo('work-items');
+        if (window.viewWorkItem) window.viewWorkItem(item.id);
     }
 };
 

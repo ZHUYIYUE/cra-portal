@@ -4,8 +4,8 @@
 let _calYear, _calMonth;
 
 window.loadDashboard = async function(content) {
-    const [statsData, projData, centersData, tasksData, findingsData, lettersData, packagesData, trainingData] = await Promise.all([
-        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getEthicsSubmissionPackages(), api.getTrainingPlans()
+    const [statsData, projData, centersData, tasksData, findingsData, lettersData, packagesData, workItemsData, trainingData] = await Promise.all([
+        api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getEthicsSubmissionPackages(), api.getCenterWorkItems(), api.getTrainingPlans()
     ]);
     
     if (window.state) {
@@ -18,6 +18,7 @@ window.loadDashboard = async function(content) {
     const findings = findingsData.findings || [];
     const letters = lettersData.letters || [];
     const ethicsPackages = packagesData.packages || [];
+    const workItems = workItemsData.items || [];
     const trainingPlans = trainingData.plans || [];
     const s = statsData.stats || {};
     const todayStr = new Date().toISOString().split('T')[0];
@@ -37,6 +38,9 @@ window.loadDashboard = async function(content) {
     }).sort(function(a, b) {
         return (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
     });
+    const workItemFollowups = workItems.filter(function(item) {
+        return item.status !== '已完成' && (window.workItemTone ? window.workItemTone(item) === 'danger' || item.status === '等待外部反馈' : true);
+    }).sort(function(a, b) { return (a.follow_up_date || a.due_date || '9999-12-31').localeCompare(b.follow_up_date || b.due_date || '9999-12-31'); });
     const riskCenters = centers
         .filter(c => (c.task_count || 0) > 0 || (c.open_finding_count || 0) > 0)
         .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
@@ -109,6 +113,12 @@ window.loadDashboard = async function(content) {
             <span class="wb-chip ${isOverdue ? 'danger' : ''}">${pkg.due_date || window.escHtml(pkg.status || '进行中')}</span>
         </button>`;
     }).join('') || '<div class="wb-empty">暂无需要跟进的伦理递交包。</div>';
+
+    const workItemRows = workItemFollowups.slice(0, 5).map(function(item) {
+        var tone = window.workItemTone ? window.workItemTone(item) : '';
+        var next = window.getWorkItemNextStep ? window.getWorkItemNextStep(item) : item.next_action;
+        return `<button class="wb-list-row" onclick="window.openDashboardWorkItem('${item.id}')"><span class="wb-row-main"><strong>${window.escHtml(item.title || '未命名中心事项')}</strong><small>${window.escHtml(item.center_name || item.project_name || '')} · ${window.escHtml(next || '补充下一步')}</small></span><span class="wb-chip ${tone === 'danger' ? 'danger' : tone === 'warning' ? 'warning' : ''}">${item.follow_up_date || item.due_date || window.escHtml(item.status || '进行中')}</span></button>`;
+    }).join('') || '<div class="wb-empty">暂无需要催办的中心事项。</div>';
     
     content.innerHTML = `
         <section class="workbench-shell">
@@ -133,6 +143,7 @@ window.loadDashboard = async function(content) {
                 <button class="wb-metric ${overdueTrainingPlans.length ? 'danger' : ''}" onclick="window.navigateTo('training')"><strong>${overdueTrainingPlans.length}</strong><span>培训风险</span></button>
                 <button class="wb-metric ${dueWeekTrainingPlans.length ? 'warning' : ''}" onclick="window.navigateTo('training')"><strong>${dueWeekTrainingPlans.length}</strong><span>培训本周到期</span></button>
                 <button class="wb-metric ${ethicsFollowups.length ? 'warning' : ''}" onclick="window.navigateTo('ethics')"><strong>${ethicsFollowups.length}</strong><span>伦理待跟进</span></button>
+                <button class="wb-metric ${workItemFollowups.length ? 'danger' : ''}" onclick="window.navigateTo('work-items')"><strong>${workItemFollowups.length}</strong><span>中心事项待跟进</span></button>
             </div>
             <div class="workbench-grid">
                 <div class="workbench-panel">
@@ -154,6 +165,10 @@ window.loadDashboard = async function(content) {
                 <div class="workbench-panel">
                     <div class="wb-panel-title"><i class="fas fa-scale-balanced"></i> 伦理闭环</div>
                     ${ethicsRows}
+                </div>
+                <div class="workbench-panel">
+                    <div class="wb-panel-title"><i class="fas fa-list-check"></i> 中心事项催办</div>
+                    ${workItemRows}
                 </div>
                 <div class="workbench-panel">
                     <div class="wb-panel-title"><i class="fas fa-graduation-cap"></i> 培训跟进</div>
@@ -261,6 +276,7 @@ window.openDashboardEthicsPackage = async function(id) {
     await window.navigateTo('ethics');
     if (window.viewEthicsPackage) window.viewEthicsPackage(id);
 };
+window.openDashboardWorkItem = async function(id) { await window.navigateTo('work-items'); if (window.viewWorkItem) window.viewWorkItem(id); };
 window.renderCal = async function() {
     // 获取所有未完成任务
     const data = await api.getTasks();
