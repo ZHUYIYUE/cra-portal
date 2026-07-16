@@ -1,7 +1,7 @@
 // ========== 中心详情页 + Tab 渲染 + 所有表单 ==========
 
 // Tab 定义
-window.CENTER_TABS = ['概览', '研究人员', '伦理递交', '方案偏离', '关联数据'];
+window.CENTER_TABS = ['概览', '工作事项', '研究人员', '伦理递交', '方案偏离', '关联数据'];
 
 // 研究人员角色
 window.STAFF_ROLES = ['PI', 'Sub-I', '研究护士', '药品管理员', 'CRC', '质控'];
@@ -26,11 +26,12 @@ window.loadCenterDetail = async function(content) {
         content.innerHTML = '<p style="color:#999;">未选择中心</p>';
         return;
     }
-    const [centerData, staffData, ethicsData, ethicsPackagesData, pdsData, tasksData, findingsData] = await Promise.all([
+    const [centerData, staffData, ethicsData, ethicsPackagesData, workItemsData, pdsData, tasksData, findingsData] = await Promise.all([
         api.getCenter(centerId),
         api.getStaff(centerId),
         api.getEthics(centerId),
         api.getEthicsSubmissionPackages({center_id: centerId}),
+        api.getCenterWorkItems({center_id: centerId}),
         api.getPDs(centerId),
         api.getTasks({center_id: centerId}),
         api.getFindings({center_id: centerId})
@@ -39,13 +40,14 @@ window.loadCenterDetail = async function(content) {
     const staff = staffData.staff || [];
     const ethics = ethicsData.ethics || [];
     const ethicsPackages = ethicsPackagesData.packages || [];
+    const workItems = workItemsData.items || [];
     const pds = pdsData.pds || [];
     const centerTasks = tasksData.tasks || [];
     const centerFindings = findingsData.findings || [];
     const today = new Date().toISOString().split('T')[0];
 
     // 缓存数据，避免切换 Tab 重复请求
-    window._cdc = { center, staff, ethics, ethicsPackages, pds, centerTasks, centerFindings, today };
+    window._cdc = { center, staff, ethics, ethicsPackages, workItems, pds, centerTasks, centerFindings, today };
 
     if (window.state && !window.state.centerDetailTab) window.state.centerDetailTab = '概览';
 
@@ -95,6 +97,7 @@ window.refreshCacheAndTab = async function(tabs) {
     if (tabs.includes('staff')) needs.push(api.getStaff(centerId).then(function(d) { window._cdc.staff = d.staff || []; }));
     if (tabs.includes('ethics')) needs.push(api.getEthics(centerId).then(function(d) { window._cdc.ethics = d.ethics || []; }));
     if (tabs.includes('ethics-packages')) needs.push(api.getEthicsSubmissionPackages({center_id: centerId}).then(function(d) { window._cdc.ethicsPackages = d.packages || []; }));
+    if (tabs.includes('work-items')) needs.push(api.getCenterWorkItems({center_id: centerId}).then(function(d) { window._cdc.workItems = d.items || []; }));
     if (tabs.includes('pds')) needs.push(api.getPDs(centerId).then(function(d) { window._cdc.pds = d.pds || []; }));
     if (tabs.includes('tasks')) needs.push(api.getTasks({center_id: centerId}).then(function(d) { window._cdc.centerTasks = d.tasks || []; }));
     if (tabs.includes('findings')) needs.push(api.getFindings({center_id: centerId}).then(function(d) { window._cdc.centerFindings = d.findings || []; }));
@@ -103,10 +106,11 @@ window.refreshCacheAndTab = async function(tabs) {
 };
 
 window.renderCenterTabContent = function(tab, data) {
-    const { center, staff, ethics, ethicsPackages, pds, centerTasks, centerFindings, today } = data;
+    const { center, staff, ethics, ethicsPackages, workItems, pds, centerTasks, centerFindings, today } = data;
     const el = document.getElementById('center-tab-content');
     if (!el) return;
     if (tab === '概览') window.renderCenterTabOverview(el, data);
+    else if (tab === '工作事项') window.renderCenterTabWorkItems(el, workItems || [], center.id);
     else if (tab === '研究人员') window.renderCenterTabStaff(el, staff, center.id);
     else if (tab === '伦理递交') window.renderCenterTabEthics(el, ethics, center.id, ethicsPackages || []);
     else if (tab === '方案偏离') window.renderCenterTabPDs(el, pds, center.id);
@@ -319,6 +323,21 @@ window.renderCenterTabStaff = function(el, staffList, centerId) {
             </div>`}
         </div>
     `;
+};
+
+// ========== Tab 2: 中心工作事项 ==========
+
+window.renderCenterTabWorkItems = function(el, items, centerId) {
+    var active = (items || []).filter(function(item) { return item.status !== '已完成'; });
+    var rows = active.length ? active.map(function(item) {
+        var tone = window.workItemTone ? window.workItemTone(item) : '';
+        var next = window.getWorkItemNextStep ? window.getWorkItemNextStep(item) : item.next_action;
+        return `<div class="center-work-item-row ${tone}" onclick="window.viewWorkItem('${item.id}')">
+            <div><strong>${window.escHtml(item.title || '未命名事项')}</strong><small>${window.escHtml(item.item_type || '其他')} · ${window.escHtml(item.status || '进行中')} · ${item.completed_steps || 0}/${item.total_steps || 0} 步骤</small><span><i class="fas fa-arrow-right"></i> ${window.escHtml(next || '补充下一步')}</span></div>
+            <div class="center-work-item-side">${item.follow_up_date ? '<small>催办 ' + item.follow_up_date + '</small>' : ''}${item.due_date ? '<small>节点 ' + item.due_date + '</small>' : ''}</div>
+        </div>`;
+    }).join('') : '<div class="cd-empty"><i class="fas fa-list-check"></i>暂无进行中的中心事项<br><small>协议、伦理、数据清理、结算等完整工作都可在这里管理。</small></div>';
+    el.innerHTML = `<div class="cd-section"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><div><span style="font-size:1em;font-weight:600;color:#2c3e50;"><i class="fas fa-list-check" style="color:#3498db;margin-right:6px;"></i>中心工作事项</span><span style="background:#e8f4fd;color:#2980b9;padding:2px 8px;border-radius:10px;font-size:0.8em;margin-left:6px;">${active.length} 项进行中</span></div><button class="btn btn-sm btn-primary" onclick="window.openWorkItemForm('', '${centerId}')"><i class="fas fa-plus"></i> 新建事项</button></div><div class="center-work-items-list">${rows}</div></div>`;
 };
 
 // ========== Tab 3: 伦理递交 ==========

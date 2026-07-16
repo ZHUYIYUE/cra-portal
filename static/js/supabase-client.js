@@ -88,6 +88,11 @@ function _isMissingTrainingTables(err) {
     return /training_plans|training_records|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
 }
 
+function _isMissingCenterWorkItemsTables(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /center_work_items|center_work_item_steps|center_work_item_activities|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
+}
+
 function _stripTaskPlanningFields(data) {
     var copy = Object.assign({}, data);
     delete copy.estimated_minutes;
@@ -98,6 +103,117 @@ function _stripTaskPlanningFields(data) {
 // ========== 全局 API 对象 ==========
 
 window.api = {
+
+    // ===== 中心工作事项 =====
+
+    getCenterWorkItems: async function(filters) {
+        var params = { order: 'updated_at.desc' };
+        if (filters) {
+            if (filters.project_id) params.project_id = 'eq.' + filters.project_id;
+            if (filters.center_id) params.center_id = 'eq.' + filters.center_id;
+        }
+        try {
+            var results = await Promise.all([
+                _select('center_work_items', params),
+                _select('center_work_item_steps', { order: 'sort_order.asc' }),
+                _select('center_work_item_activities', { order: 'created_at.desc' }),
+                _select('projects', { select: 'id,name,code,stage' }),
+                _select('centers', { select: 'id,name,code,project_id' })
+            ]);
+            var items = results[0], steps = results[1], activities = results[2], projects = results[3], centers = results[4];
+            return { success: true, items: items.map(function(item) {
+                var project = projects.find(function(p) { return p.id === item.project_id; });
+                var center = centers.find(function(c) { return c.id === item.center_id; });
+                var itemSteps = steps.filter(function(s) { return s.work_item_id === item.id; });
+                var itemActivities = activities.filter(function(a) { return a.work_item_id === item.id; });
+                return Object.assign({}, item, {
+                    project_name: project ? project.name : '',
+                    project_code: project ? project.code : '',
+                    center_name: center ? ((center.code || '') + ' ' + (center.name || '')).trim() : '',
+                    steps: itemSteps,
+                    activities: itemActivities,
+                    completed_steps: itemSteps.filter(function(s) { return s.done; }).length,
+                    total_steps: itemSteps.length
+                });
+            }) };
+        } catch (err) {
+            if (!_isMissingCenterWorkItemsTables(err)) throw err;
+            return { success: true, items: [], missingTable: true };
+        }
+    },
+
+    getCenterWorkItem: async function(id) {
+        try {
+            var list = await this.getCenterWorkItems();
+            var item = list.items.find(function(x) { return x.id === id; });
+            return item ? { success: true, item: item } : { success: false, error: '中心工作事项不存在' };
+        } catch (err) {
+            if (!_isMissingCenterWorkItemsTables(err)) throw err;
+            return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
+        }
+    },
+
+    createCenterWorkItem: async function(data) {
+        var id = _genId();
+        try {
+            await _insert('center_work_items', {
+                id: id, project_id: data.project_id || '', center_id: data.center_id || '',
+                title: data.title || '', item_type: data.item_type || '其他', project_stage: data.project_stage || '',
+                status: data.status || '进行中', priority: data.priority || 'medium', waiting_for: data.waiting_for || '',
+                next_action: data.next_action || '', follow_up_date: data.follow_up_date || '', due_date: data.due_date || '',
+                last_progress_at: data.last_progress_at || _todayStr(), notes: data.notes || '', completed_at: '',
+                created_at: _now(), updated_at: _now()
+            });
+            for (var i = 0; i < (data.steps || []).length; i++) {
+                var step = data.steps[i];
+                if (!step.title) continue;
+                await _insert('center_work_item_steps', {
+                    id: _genId(), work_item_id: id, title: step.title, status: step.status || '待处理',
+                    waiting_for: step.waiting_for || '', due_date: step.due_date || '', done: !!step.done,
+                    sort_order: i, created_at: _now(), updated_at: _now()
+                });
+            }
+            if (data.initial_activity) {
+                await _insert('center_work_item_activities', { id: _genId(), work_item_id: id, action_type: '创建事项', content: data.initial_activity, action_date: _todayStr(), created_at: _now() });
+            }
+            return { success: true, id: id };
+        } catch (err) {
+            if (!_isMissingCenterWorkItemsTables(err)) throw err;
+            return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
+        }
+    },
+
+    updateCenterWorkItem: async function(id, data) {
+        try {
+            var update = { updated_at: _now() };
+            ['project_id', 'center_id', 'title', 'item_type', 'project_stage', 'status', 'priority', 'waiting_for', 'next_action', 'follow_up_date', 'due_date', 'last_progress_at', 'notes', 'completed_at'].forEach(function(f) { if (f in data) update[f] = data[f]; });
+            await _update('center_work_items', id, update);
+            if (data.steps) {
+                var existing = await _select('center_work_item_steps', { work_item_id: 'eq.' + id });
+                for (var i = 0; i < existing.length; i++) await _delete('center_work_item_steps', existing[i].id);
+                for (var j = 0; j < data.steps.length; j++) {
+                    var step = data.steps[j];
+                    if (!step.title) continue;
+                    await _insert('center_work_item_steps', { id: _genId(), work_item_id: id, title: step.title, status: step.status || '待处理', waiting_for: step.waiting_for || '', due_date: step.due_date || '', done: !!step.done, sort_order: j, created_at: _now(), updated_at: _now() });
+                }
+            }
+            if (data.activity) {
+                await _insert('center_work_item_activities', { id: _genId(), work_item_id: id, action_type: data.activity_type || '推进记录', content: data.activity, action_date: data.activity_date || _todayStr(), created_at: _now() });
+            }
+            return { success: true };
+        } catch (err) {
+            if (!_isMissingCenterWorkItemsTables(err)) throw err;
+            return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
+        }
+    },
+
+    deleteCenterWorkItem: async function(id) {
+        try { return await _delete('center_work_items', id); }
+        catch (err) {
+            if (!_isMissingCenterWorkItemsTables(err)) throw err;
+            return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
+        }
+    },
 
     // ===== 项目 =====
 
