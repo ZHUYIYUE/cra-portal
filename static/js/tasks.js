@@ -99,6 +99,7 @@ window.renderTaskItem = function(t) {
                     <span><i class="far fa-hourglass"></i> ${window.formatTaskEstimate(t)}</span>
                     ${startedText ? `<span><i class="fas fa-play"></i> ${startedText}</span>` : ''}
                     ${t.priority ? `<span class="task-priority priority-${t.priority}">${{high:'高',medium:'中',low:'低'}[t.priority]||t.priority}</span>` : ''}
+                    ${t.source_type === 'center_work_item' ? '<span class="task-source-chip"><i class="fas fa-link"></i> 中心事项同步</span>' : ''}
                 </p>
             </div>
             ${!t.done ? `<button class="btn btn-sm ${isActive ? 'btn-outline' : 'btn-primary'} task-start-btn" onclick="event.stopPropagation();window.toggleTaskActive('${t.id}', ${!isActive})" title="${isActive ? '暂停执行' : '开始执行'}"><i class="fas ${isActive ? 'fa-pause' : 'fa-play'}"></i> ${isActive ? '暂停' : '开始'}</button>` : ''}
@@ -220,6 +221,8 @@ window.loadTasks = async function(content) {
     const todayStr = new Date().toISOString().split('T')[0];
     const weekStr = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
     const total = tasks.length;
+    const synced = tasks.filter(t => t.source_type === 'center_work_item').length;
+    const manual = total - synced;
     const done = tasks.filter(t => t.done).length;
     const pending = tasks.filter(t => !t.done && !['active', 'waiting_crc'].includes(t.task_status || 'pending')).length;
     const overdue = tasks.filter(t => !t.done && t.due_date && t.due_date < todayStr).length;
@@ -244,7 +247,7 @@ window.loadTasks = async function(content) {
         <div class="card">
             <div class="card-header">
                 <i class="fas fa-tasks"></i> 待办事项
-                <span style="margin-left:auto;color:#666;font-size:0.9em;">${done}/${total} 已完成</span>
+                <span style="margin-left:auto;color:#666;font-size:0.9em;">${done}/${total} 已完成 · ${synced} 项中心事项同步 · ${manual} 项自由待办</span>
                 <button class="btn btn-primary" onclick="window.showAddTask()" style="margin-left:10px;">
                     <i class="fas fa-plus"></i> 新建待办
                 </button>
@@ -608,7 +611,10 @@ window.submitCreateTask = async function(e) {
 // ========== 切换任务完成状态 ==========
 
 window.toggleTaskDone = async function(taskId, newDone) {
-    const result = await api.updateTask(taskId, {done: newDone, task_status: newDone ? 'done' : 'pending'});
+    const task = window.state ? window.state.tasks.find(t => t.id === taskId) : null;
+    const result = task && task.source_type === 'center_work_item'
+        ? await api.updateLinkedWorkItemTask(taskId, newDone)
+        : await api.updateTask(taskId, {done: newDone, task_status: newDone ? 'done' : 'pending'});
     
     if (result.success) {
         const el = document.getElementById(`task-${taskId}`) || document.querySelector(`[data-task-id="${taskId}"]`);
@@ -660,6 +666,11 @@ window.toggleTaskActive = async function(taskId, activate) {
 // ========== 删除任务 ==========
 
 window.deleteTaskById = async function(taskId) {
+    const task = window.state ? window.state.tasks.find(t => t.id === taskId) : null;
+    if (task && task.source_type === 'center_work_item') {
+        window.showToast('该待办由中心事项同步，请在中心事项中调整或删除。');
+        return;
+    }
     if (!confirm('确定删除此待办？')) return;
     const result = await api.deleteTask(taskId);
     if (result.success) {
@@ -679,6 +690,10 @@ window.deleteTaskById = async function(taskId) {
 window.showEditTask = async function(taskId) {
     const task = window.state ? window.state.tasks.find(t => t.id === taskId) : null;
     if (!task) { alert('未找到该任务'); return; }
+    if (task.source_type === 'center_work_item') {
+        window.showToast('该待办由中心事项步骤同步，请在「中心工作事项」中更新步骤、日期或标题。');
+        return;
+    }
     
     const projectOptions = `<option value="">不关联项目</option>` +
         (window.state && window.state.projects || []).map(p => `<option value="${p.id}" ${p.id === task.project_id ? 'selected' : ''}>${window.escHtml(p.name)}</option>`).join('');

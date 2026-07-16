@@ -105,6 +105,7 @@ body {
     align-items: center;
     gap: 10px;
 }
+.task-source-chip { color:#286b9f; background:#eaf4fc; border-radius:99px; padding:2px 7px; font-size:.78em; white-space:nowrap; }
 
 /* ====== 中心工作事项 ====== */
 .work-items-shell { display:flex; flex-direction:column; gap:16px; }
