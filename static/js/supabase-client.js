@@ -73,6 +73,11 @@ function _isMissingTaskPlanningColumn(err) {
     return /estimated_minutes|started_at|schema cache|column/i.test(msg);
 }
 
+function _isMissingTaskSourceColumn(err) {
+    var msg = err && err.message ? err.message : String(err || '');
+    return /source_type|source_work_item_id|source_work_item_step_id/i.test(msg);
+}
+
 function _isMissingProjectDocumentsTable(err) {
     var msg = err && err.message ? err.message : String(err || '');
     return /project_documents|schema cache|relation .* does not exist|PGRST205|42P01/i.test(msg);
@@ -97,6 +102,14 @@ function _stripTaskPlanningFields(data) {
     var copy = Object.assign({}, data);
     delete copy.estimated_minutes;
     delete copy.started_at;
+    return copy;
+}
+
+function _stripTaskSourceFields(data) {
+    var copy = Object.assign({}, data);
+    delete copy.source_type;
+    delete copy.source_work_item_id;
+    delete copy.source_work_item_step_id;
     return copy;
 }
 
@@ -176,7 +189,8 @@ window.api = {
             if (data.initial_activity) {
                 await _insert('center_work_item_activities', { id: _genId(), work_item_id: id, action_type: '创建事项', content: data.initial_activity, action_date: _todayStr(), created_at: _now() });
             }
-            return { success: true, id: id };
+            var taskSync = await this.syncCenterWorkItemTask(id);
+            return { success: true, id: id, taskSync: taskSync };
         } catch (err) {
             if (!_isMissingCenterWorkItemsTables(err)) throw err;
             return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
@@ -190,17 +204,23 @@ window.api = {
             await _update('center_work_items', id, update);
             if (data.steps) {
                 var existing = await _select('center_work_item_steps', { work_item_id: 'eq.' + id });
-                for (var i = 0; i < existing.length; i++) await _delete('center_work_item_steps', existing[i].id);
+                var submittedIds = data.steps.filter(function(step) { return step.id; }).map(function(step) { return step.id; });
+                for (var i = 0; i < existing.length; i++) {
+                    if (submittedIds.indexOf(existing[i].id) === -1) await _delete('center_work_item_steps', existing[i].id);
+                }
                 for (var j = 0; j < data.steps.length; j++) {
                     var step = data.steps[j];
                     if (!step.title) continue;
-                    await _insert('center_work_item_steps', { id: _genId(), work_item_id: id, title: step.title, status: step.status || '待处理', waiting_for: step.waiting_for || '', due_date: step.due_date || '', done: !!step.done, sort_order: j, created_at: _now(), updated_at: _now() });
+                    var stepData = { work_item_id: id, title: step.title, status: step.status || '待处理', waiting_for: step.waiting_for || '', due_date: step.due_date || '', done: !!step.done, sort_order: j, updated_at: _now() };
+                    if (step.id) await _update('center_work_item_steps', step.id, stepData);
+                    else await _insert('center_work_item_steps', Object.assign({ id: _genId(), created_at: _now() }, stepData));
                 }
             }
             if (data.activity) {
                 await _insert('center_work_item_activities', { id: _genId(), work_item_id: id, action_type: data.activity_type || '推进记录', content: data.activity, action_date: data.activity_date || _todayStr(), created_at: _now() });
             }
-            return { success: true };
+            var taskSync = await this.syncCenterWorkItemTask(id);
+            return { success: true, taskSync: taskSync };
         } catch (err) {
             if (!_isMissingCenterWorkItemsTables(err)) throw err;
             return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
@@ -208,7 +228,18 @@ window.api = {
     },
 
     deleteCenterWorkItem: async function(id) {
-        try { return await _delete('center_work_items', id); }
+        try {
+            if (!window._taskSourceColumnsMissing) {
+                try {
+                    var tasks = await _select('tasks', { source_work_item_id: 'eq.' + id });
+                    for (var i = 0; i < tasks.length; i++) await _delete('tasks', tasks[i].id);
+                } catch (taskErr) {
+                    if (!_isMissingTaskSourceColumn(taskErr)) throw taskErr;
+                    window._taskSourceColumnsMissing = true;
+                }
+            }
+            return await _delete('center_work_items', id);
+        }
         catch (err) {
             if (!_isMissingCenterWorkItemsTables(err)) throw err;
             return { success: false, error: '中心工作事项表尚未创建，请先执行 supabase/center_work_items.sql' };
@@ -453,14 +484,35 @@ window.api = {
             done: data.done || false, task_status: data.task_status || 'pending',
             estimated_minutes: data.estimated_minutes || null,
             started_at: data.started_at || '',
+            source_type: data.source_type || 'manual',
+            source_work_item_id: data.source_work_item_id || '',
+            source_work_item_step_id: data.source_work_item_step_id || '',
             created_at: _now()
         };
         try {
             await _insert('tasks', row);
         } catch (err) {
-            if (!_isMissingTaskPlanningColumn(err)) throw err;
-            window._taskPlanningColumnsMissing = true;
-            await _insert('tasks', _stripTaskPlanningFields(row));
+            if (_isMissingTaskSourceColumn(err)) {
+                window._taskSourceColumnsMissing = true;
+                if (data.source_type === 'center_work_item') return { success: false, missingLinkColumns: true };
+                row = _stripTaskSourceFields(row);
+            } else if (!_isMissingTaskPlanningColumn(err)) throw err;
+            if (_isMissingTaskPlanningColumn(err)) {
+                window._taskPlanningColumnsMissing = true;
+                row = _stripTaskPlanningFields(row);
+            }
+            try { await _insert('tasks', row); }
+            catch (fallbackErr) {
+                if (_isMissingTaskSourceColumn(fallbackErr)) {
+                    window._taskSourceColumnsMissing = true;
+                    if (data.source_type === 'center_work_item') return { success: false, missingLinkColumns: true };
+                    await _insert('tasks', _stripTaskSourceFields(_stripTaskPlanningFields(row)));
+                } else {
+                    if (!_isMissingTaskPlanningColumn(fallbackErr)) throw fallbackErr;
+                    window._taskPlanningColumnsMissing = true;
+                    await _insert('tasks', _stripTaskPlanningFields(row));
+                }
+            }
         }
         return { success: true, id: id };
     },
@@ -483,6 +535,50 @@ window.api = {
 
     deleteTask: async function(id) {
         return _delete('tasks', id);
+    },
+
+    // 一个事项只保留当前未完成步骤对应的一条系统待办；手工待办不参与此逻辑。
+    syncCenterWorkItemTask: async function(workItemId) {
+        if (window._taskSourceColumnsMissing) return { success: false, missingLinkColumns: true };
+        try {
+            var result = await Promise.all([
+                _selectOne('center_work_items', workItemId),
+                _select('center_work_item_steps', { work_item_id: 'eq.' + workItemId, order: 'sort_order.asc' }),
+                _select('tasks', { source_work_item_id: 'eq.' + workItemId })
+            ]);
+            var item = result[0], steps = result[1], linkedTasks = result[2];
+            if (!item) return { success: false, error: '中心工作事项不存在' };
+            var currentStep = item.status === '已完成' ? null : steps.find(function(step) { return !step.done; });
+            var currentTask = currentStep && linkedTasks.find(function(task) { return task.source_work_item_step_id === currentStep.id; });
+            for (var i = 0; i < linkedTasks.length; i++) {
+                if (!currentTask || linkedTasks[i].id !== currentTask.id) {
+                    if (!linkedTasks[i].done) await this.updateTask(linkedTasks[i].id, { done: true, task_status: 'done' });
+                }
+            }
+            if (!currentStep) return { success: true, currentTaskId: '' };
+            var taskData = { title: item.title + '｜' + currentStep.title, project_id: item.project_id, center_id: item.center_id, priority: item.priority || 'medium', ability_type: 'execution', due_date: currentStep.due_date || item.follow_up_date || item.due_date || '', done: false, task_status: currentTask && currentTask.task_status !== 'done' ? (currentTask.task_status || 'pending') : 'pending' };
+            if (currentTask) {
+                await this.updateTask(currentTask.id, taskData);
+                return { success: true, currentTaskId: currentTask.id };
+            }
+            var created = await this.createTask(Object.assign({}, taskData, { source_type: 'center_work_item', source_work_item_id: workItemId, source_work_item_step_id: currentStep.id }));
+            return created.missingLinkColumns ? created : { success: true, currentTaskId: created.id };
+        } catch (err) {
+            if (_isMissingTaskSourceColumn(err)) { window._taskSourceColumnsMissing = true; return { success: false, missingLinkColumns: true }; }
+            throw err;
+        }
+    },
+
+    updateLinkedWorkItemTask: async function(taskId, done) {
+        var task = await _selectOne('tasks', taskId);
+        if (!task || task.source_type !== 'center_work_item' || !task.source_work_item_id || !task.source_work_item_step_id) return this.updateTask(taskId, { done: done, task_status: done ? 'done' : 'pending' });
+        await this.updateTask(taskId, { done: done, task_status: done ? 'done' : 'pending' });
+        await _update('center_work_item_steps', task.source_work_item_step_id, { done: !!done, updated_at: _now() });
+        var steps = await _select('center_work_item_steps', { work_item_id: 'eq.' + task.source_work_item_id, order: 'sort_order.asc' });
+        var next = steps.find(function(step) { return !step.done; });
+        await _update('center_work_items', task.source_work_item_id, { next_action: next ? next.title : '全部步骤已完成，请确认事项状态', last_progress_at: _todayStr(), updated_at: _now() });
+        await _insert('center_work_item_activities', { id: _genId(), work_item_id: task.source_work_item_id, action_type: done ? '待办完成' : '待办重新打开', content: (done ? '已完成步骤：' : '重新打开步骤：') + task.title.split('｜').slice(1).join('｜'), action_date: _todayStr(), created_at: _now() });
+        return this.syncCenterWorkItemTask(task.source_work_item_id);
     },
 
     // ===== 监查问题 =====
