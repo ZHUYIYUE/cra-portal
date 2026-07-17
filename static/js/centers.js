@@ -126,6 +126,8 @@ window.renderCenterTabOverview = function(el, data) {
     const pds = data.pds || [];
     const centerTasks = data.centerTasks || [];
     const centerFindings = data.centerFindings || [];
+    const workItems = data.workItems || [];
+    const ethicsPackages = data.ethicsPackages || [];
     const today = data.today || new Date().toISOString().split('T')[0];
     const openTasks = centerTasks.filter(t => !t.done);
     const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < today);
@@ -133,12 +135,17 @@ window.renderCenterTabOverview = function(el, data) {
     const overdueFindings = activeFindings.filter(f => f.due_date && f.due_date < today);
     const pendingEthics = ethics.filter(e => !e.approval_date);
     const openPDs = pds.filter(pd => pd.status !== 'Closed');
+    const activeWorkItems = workItems.filter(item => item.status !== '已完成');
+    const workItemFollowups = activeWorkItems.filter(function(item) {
+        return (window.workItemTone && window.workItemTone(item) === 'danger') || item.status === '等待外部反馈';
+    });
+    const ethicsFollowups = ethicsPackages.filter(function(pkg) { return pkg.status !== '已完成'; });
     const missingStaffDocs = staff.filter(s => !s.gcp_collected || !s.cv_collected || !s.license_collected).length;
     const requiredFields = ['pi_name', 'pi_phone', 'pi_email', 'contact_crc', 'contact_crc_phone', 'contact_ethics'];
     const completedFields = requiredFields.filter(f => !!c[f]).length;
     const completionPct = Math.round(completedFields / requiredFields.length * 100);
 
-    const riskTone = overdueTasks.length || overdueFindings.length ? 'danger' : (openTasks.length || activeFindings.length || pendingEthics.length || openPDs.length ? 'warning' : 'ok');
+    const riskTone = overdueTasks.length || overdueFindings.length || workItemFollowups.length ? 'danger' : (openTasks.length || activeFindings.length || pendingEthics.length || openPDs.length || ethicsFollowups.length ? 'warning' : 'ok');
     const jsArg = value => window.escAttr(JSON.stringify(value || ''));
     const infoItem = (icon, bg, label, value, copyValue) => value ? `
         <div class="cd-info-card">
@@ -160,6 +167,30 @@ window.renderCenterTabOverview = function(el, data) {
             ${detail ? `<button class="cd-copy-btn" onclick="window.copyCenterText(${jsArg(detail)})" title="复制"><i class="fas fa-copy"></i></button>` : ''}
         </div>`;
     const metric = (num, label, tone) => `<div class="cc-metric ${tone || ''}"><strong>${num}</strong><span>${label}</span></div>`;
+    const taskScore = function(task) {
+        if (task.due_date && task.due_date < today && task.priority === 'high') return 0;
+        if (task.due_date && task.due_date < today) return 1;
+        if (task.due_date === today && task.priority === 'high') return 2;
+        if (task.task_status === 'active') return 3;
+        if (task.due_date === today) return 4;
+        return 5;
+    };
+    const actionRows = openTasks.filter(function(task) {
+        return (task.due_date && task.due_date <= today) || task.task_status === 'active';
+    }).slice().sort(function(a, b) {
+        const diff = taskScore(a) - taskScore(b);
+        return diff || (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
+    }).slice(0, 3).map(function(task) {
+        const overdue = task.due_date && task.due_date < today;
+        const label = overdue ? '已逾期' : task.due_date === today ? '今天' : '执行中';
+        return `<button class="cc-action-row" onclick="window.viewTask('${task.id}')"><span><i class="fas fa-tasks"></i><strong>${window.escHtml(task.title)}</strong><small>${task.source_type === 'center_work_item' ? '中心事项当前步骤' : '待办事项'}${task.due_date ? ' · ' + task.due_date : ''}</small></span><em class="${overdue ? 'danger' : task.due_date === today ? 'warning' : ''}">${label}</em></button>`;
+    });
+    const linkedItemIds = openTasks.filter(function(task) { return task.source_type === 'center_work_item'; }).map(function(task) { return task.source_work_item_id; });
+    workItemFollowups.filter(function(item) { return linkedItemIds.indexOf(item.id) === -1; }).slice(0, 2).forEach(function(item) {
+        const next = window.getWorkItemNextStep ? window.getWorkItemNextStep(item) : item.next_action;
+        actionRows.push(`<button class="cc-action-row" onclick="window.viewWorkItem('${item.id}')"><span><i class="fas fa-list-check"></i><strong>${window.escHtml(item.title)}</strong><small>${window.escHtml(next || '补充下一步')} · ${item.waiting_for ? '等待 ' + window.escHtml(item.waiting_for) : '需跟进'}</small></span><em class="danger">催办</em></button>`);
+    });
+    const currentActions = actionRows.slice(0, 4).join('') || '<div class="cc-action-empty"><i class="fas fa-check-circle"></i> 当前没有逾期、今日或执行中的行动。</div>';
 
     el.innerHTML = `
         <div class="cd-section">
@@ -184,6 +215,10 @@ window.renderCenterTabOverview = function(el, data) {
                     </div>
                     <div class="cc-progress"><span style="width:${completionPct}%"></span></div>
                 </div>
+                <section class="cc-actions-panel">
+                    <div class="cc-actions-panel-head"><strong><i class="fas fa-bullseye"></i> 当前行动</strong><button type="button" onclick="window.switchCenterTab('关联数据', Array.from(document.querySelectorAll('.tab-btn')).find(function(btn){return btn.textContent.trim()==='关联数据';}))">查看全部待办</button></div>
+                    ${currentActions}
+                </section>
                 <div class="cc-metrics">
                     ${metric(openTasks.length, '进行中待办', openTasks.length ? 'warning' : '')}
                     ${metric(overdueTasks.length, '逾期待办', overdueTasks.length ? 'danger' : '')}
@@ -191,6 +226,7 @@ window.renderCenterTabOverview = function(el, data) {
                     ${metric(overdueFindings.length, '逾期问题', overdueFindings.length ? 'danger' : '')}
                     ${metric(pendingEthics.length, '伦理待批', pendingEthics.length ? 'warning' : '')}
                     ${metric(openPDs.length, 'Open偏离', openPDs.length ? 'warning' : '')}
+                    ${metric(workItemFollowups.length, '事项催办', workItemFollowups.length ? 'danger' : '')}
                     ${metric(missingStaffDocs, '证照待补', missingStaffDocs ? 'warning' : '')}
                 </div>
                 <div class="cc-contacts">
