@@ -26,7 +26,7 @@ window.loadCenterDetail = async function(content) {
         content.innerHTML = '<p style="color:#999;">未选择中心</p>';
         return;
     }
-    const [centerData, staffData, ethicsData, ethicsPackagesData, workItemsData, pdsData, tasksData, findingsData] = await Promise.all([
+    const [centerData, staffData, ethicsData, ethicsPackagesData, workItemsData, pdsData, tasksData, findingsData, trainingData] = await Promise.all([
         api.getCenter(centerId),
         api.getStaff(centerId),
         api.getEthics(centerId),
@@ -34,7 +34,8 @@ window.loadCenterDetail = async function(content) {
         api.getCenterWorkItems({center_id: centerId}),
         api.getPDs(centerId),
         api.getTasks({center_id: centerId}),
-        api.getFindings({center_id: centerId})
+        api.getFindings({center_id: centerId}),
+        api.getTrainingPlans({center_id: centerId})
     ]);
     const center = centerData.center || {};
     const staff = staffData.staff || [];
@@ -44,10 +45,11 @@ window.loadCenterDetail = async function(content) {
     const pds = pdsData.pds || [];
     const centerTasks = tasksData.tasks || [];
     const centerFindings = findingsData.findings || [];
+    const trainingPlans = trainingData.plans || [];
     const today = new Date().toISOString().split('T')[0];
 
     // 缓存数据，避免切换 Tab 重复请求
-    window._cdc = { center, staff, ethics, ethicsPackages, workItems, pds, centerTasks, centerFindings, today };
+    window._cdc = { center, staff, ethics, ethicsPackages, workItems, pds, centerTasks, centerFindings, trainingPlans, today };
 
     if (window.state && !window.state.centerDetailTab) window.state.centerDetailTab = '概览';
 
@@ -101,6 +103,7 @@ window.refreshCacheAndTab = async function(tabs) {
     if (tabs.includes('pds')) needs.push(api.getPDs(centerId).then(function(d) { window._cdc.pds = d.pds || []; }));
     if (tabs.includes('tasks')) needs.push(api.getTasks({center_id: centerId}).then(function(d) { window._cdc.centerTasks = d.tasks || []; }));
     if (tabs.includes('findings')) needs.push(api.getFindings({center_id: centerId}).then(function(d) { window._cdc.centerFindings = d.findings || []; }));
+    if (tabs.includes('training')) needs.push(api.getTrainingPlans({center_id: centerId}).then(function(d) { window._cdc.trainingPlans = d.plans || []; }));
     await Promise.all(needs);
     window.refreshTabFromCache(window.state ? window.state.centerDetailTab : '概览');
 };
@@ -128,6 +131,7 @@ window.renderCenterTabOverview = function(el, data) {
     const centerFindings = data.centerFindings || [];
     const workItems = data.workItems || [];
     const ethicsPackages = data.ethicsPackages || [];
+    const trainingPlans = data.trainingPlans || [];
     const today = data.today || new Date().toISOString().split('T')[0];
     const openTasks = centerTasks.filter(t => !t.done);
     const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < today);
@@ -145,7 +149,8 @@ window.renderCenterTabOverview = function(el, data) {
     const completedFields = requiredFields.filter(f => !!c[f]).length;
     const completionPct = Math.round(completedFields / requiredFields.length * 100);
 
-    const riskTone = overdueTasks.length || overdueFindings.length || workItemFollowups.length ? 'danger' : (openTasks.length || activeFindings.length || pendingEthics.length || openPDs.length || ethicsFollowups.length ? 'warning' : 'ok');
+    const risk = window.getCenterRiskSummary ? window.getCenterRiskSummary(c.id, { tasks: centerTasks, findings: centerFindings, workItems: workItems, ethicsPackages: ethicsPackages, trainingPlans: trainingPlans }, today) : { level: 'low', label: '低风险', reasons: [] };
+    const riskTone = risk.level === 'high' ? 'danger' : risk.level === 'medium' ? 'warning' : 'ok';
     const jsArg = value => window.escAttr(JSON.stringify(value || ''));
     const infoItem = (icon, bg, label, value, copyValue) => value ? `
         <div class="cd-info-card">
@@ -210,8 +215,8 @@ window.renderCenterTabOverview = function(el, data) {
                 </div>
                 <div class="cc-status ${riskTone}">
                     <div>
-                        <strong>${riskTone === 'danger' ? '需要优先处理' : riskTone === 'warning' ? '有事项待跟进' : '暂无明显风险'}</strong>
-                        <span>资料完整度 ${completionPct}% · ${staff.length} 名研究人员 · ${ethics.length} 条伦理记录</span>
+                        <strong>${risk.label} · ${riskTone === 'danger' ? '需要优先处理' : riskTone === 'warning' ? '有事项待跟进' : '暂无明显风险'}</strong>
+                        <span>${risk.reasons.length ? window.escHtml(risk.reasons.slice(0, 3).join(' · ')) : '资料完整度 ' + completionPct + '% · 当前无逾期或催办风险'}</span>
                     </div>
                     <div class="cc-progress"><span style="width:${completionPct}%"></span></div>
                 </div>
