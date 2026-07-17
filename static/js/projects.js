@@ -48,12 +48,15 @@ window.loadProjects = async function(content) {
 };
 
 window.viewProject = async function(projectId) {
-    const [projectData, tasksData, centersData, findingsData, docsData] = await Promise.all([
+    const [projectData, tasksData, centersData, findingsData, docsData, workItemsData, ethicsPackagesData, trainingData] = await Promise.all([
         api.getProject(projectId),
         api.getTasks({project_id: projectId}),
         api.getCenters(projectId),
         api.getFindings({project_id: projectId}),
-        api.getProjectDocuments(projectId)
+        api.getProjectDocuments(projectId),
+        api.getCenterWorkItems({project_id: projectId}),
+        api.getEthicsSubmissionPackages({project_id: projectId}),
+        api.getTrainingPlans({project_id: projectId})
     ]);
     if (!projectData.success) { alert('加载失败'); return; }
 
@@ -62,6 +65,7 @@ window.viewProject = async function(projectId) {
     const centers = centersData.centers || [];
     const findings = findingsData.findings || [];
     const projectDocuments = docsData.documents || [];
+    const riskSources = { tasks: tasks, findings: findings, workItems: workItemsData.items || [], ethicsPackages: ethicsPackagesData.packages || [], trainingPlans: trainingData.plans || [] };
     if (window.state) {
         window.state.currentProject = p;
     }
@@ -84,7 +88,7 @@ window.viewProject = async function(projectId) {
                 ${p.notes ? `<div class="project-note"><strong>备注：</strong>${window.escHtml(p.notes).replace(/\n/g,'<br>')}</div>` : ''}
             </div>
 
-            ${window.renderProjectCockpit(projectId, p, centers, tasks, findings)}
+            ${window.renderProjectCockpit(projectId, p, centers, tasks, findings, riskSources)}
 
             <div class="card project-documents-card" id="projectDocumentsCard">
                 <div class="card-header">
@@ -337,7 +341,7 @@ window.deleteProjectDocument = async function(projectId, docId) {
     await window.loadProjectDocuments(projectId);
 };
 
-window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
+window.renderProjectCockpit = function(projectId, p, centers, tasks, findings, riskSources) {
     const today = new Date().toISOString().split('T')[0];
     const openTasks = tasks.filter(t => !t.done);
     const overdueTasks = openTasks.filter(t => t.due_date && t.due_date < today);
@@ -372,9 +376,15 @@ window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
         const done = ms.filter(m => m.done).length;
         const pct = ms.length ? Math.round(done / ms.length * 100) : 0;
         const overdueMs = ms.filter(m => !m.done && m.date && m.date < today).length;
-        const score = (c.open_finding_count || 0) * 4 + overdueMs * 3 + (c.task_count || 0);
-        return { center: c, pct: pct, overdueMs: overdueMs, score: score };
-    }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).slice(0, 4);
+        const risk = window.getCenterRiskSummary
+            ? window.getCenterRiskSummary(c.id, riskSources || { tasks: tasks, findings: findings }, today)
+            : { score: (c.open_finding_count || 0) * 4 + (c.task_count || 0), level: 'medium', label: '需关注', reasons: [] };
+        if (overdueMs) { risk.score += overdueMs * 3; risk.reasons.push(overdueMs + '个逾期里程碑'); }
+        if (risk.score >= 5) { risk.level = 'high'; risk.label = '高风险'; }
+        else if (risk.score >= 2) { risk.level = 'medium'; risk.label = '中风险'; }
+        else { risk.level = 'low'; risk.label = '低风险'; }
+        return { center: c, pct: pct, overdueMs: overdueMs, risk: risk };
+    }).filter(item => item.risk.score > 0).sort((a, b) => b.risk.score - a.risk.score).slice(0, 4);
 
     const suggestions = [];
     if (!centers.length) suggestions.push(['fa-hospital', '先添加中心，项目看板才有可跟踪对象']);
@@ -420,8 +430,8 @@ window.renderProjectCockpit = function(projectId, p, centers, tasks, findings) {
                     <div class="pc-panel-title"><i class="fas fa-hospital-user"></i> 重点中心</div>
                     ${riskCenters.length ? riskCenters.map(item => `
                         <button class="pc-risk-row" onclick="window.openCenterDetail('${item.center.id}')">
-                            <span><strong>${window.escHtml(item.center.code || '')} ${window.escHtml(item.center.name || '')}</strong><small>${item.center.task_count || 0} 待办 · ${item.center.open_finding_count || 0} Open问题 · 里程碑 ${item.pct}%</small></span>
-                            <i class="fas fa-chevron-right"></i>
+                            <span><strong>${window.escHtml(item.center.code || '')} ${window.escHtml(item.center.name || '')}</strong><small>${window.escHtml(item.risk.reasons.slice(0, 2).join(' · '))}${item.overdueMs ? ' · ' + item.overdueMs + '个逾期里程碑' : ''}</small></span>
+                            <em class="pc-risk-level ${item.risk.level}">${item.risk.label}</em>
                         </button>
                     `).join('') : '<div class="pc-empty">暂无高风险中心</div>'}
                 </div>
