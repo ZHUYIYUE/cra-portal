@@ -3,6 +3,32 @@
 // 当前日历月份
 let _calYear, _calMonth;
 
+// 风险来自已有工作记录，不要求 CRA 额外维护一个“风险字段”。
+window.getCenterRiskSummary = function(centerId, sources, today) {
+    var tasks = (sources.tasks || []).filter(function(x) { return x.center_id === centerId && !x.done; });
+    var findings = (sources.findings || []).filter(function(x) { return x.center_id === centerId && !['Resolved', 'Closed'].includes(x.status); });
+    var workItems = (sources.workItems || []).filter(function(x) { return x.center_id === centerId && x.status !== '已完成'; });
+    var ethicsPackages = (sources.ethicsPackages || []).filter(function(x) { return x.center_id === centerId && x.status !== '已完成'; });
+    var trainingPlans = (sources.trainingPlans || []).filter(function(x) { return x.center_id === centerId && x.status !== '已完成'; });
+    var score = 0, reasons = [];
+    var overdueTasks = tasks.filter(function(x) { return x.due_date && x.due_date < today; });
+    var todayHighTasks = tasks.filter(function(x) { return x.due_date === today && x.priority === 'high'; });
+    var overdueFindings = findings.filter(function(x) { return x.due_date && x.due_date < today; });
+    var criticalFindings = findings.filter(function(x) { return x.severity === 'Critical' || x.severity === 'Major'; });
+    var itemFollowups = workItems.filter(function(x) { return (window.workItemTone && window.workItemTone(x) === 'danger') || x.status === '等待外部反馈'; });
+    var ethicsOverdue = ethicsPackages.filter(function(x) { return x.due_date && x.due_date < today; });
+    var trainingRisk = trainingPlans.filter(function(x) { return x.status === '需跟进' || (x.due_date && x.due_date < today); });
+    if (overdueTasks.length) { score += 3; reasons.push(overdueTasks.length + '项逾期待办'); }
+    if (todayHighTasks.length) { score += 2; reasons.push(todayHighTasks.length + '项高优先级今日到期'); }
+    if (overdueFindings.length) { score += 4; reasons.push(overdueFindings.length + '项逾期问题'); }
+    else if (criticalFindings.length) { score += 3; reasons.push(criticalFindings.length + '项重大/关键问题'); }
+    if (itemFollowups.length) { score += 3; reasons.push(itemFollowups.length + '项中心事项需催办'); }
+    if (ethicsOverdue.length) { score += 3; reasons.push(ethicsOverdue.length + '项伦理递交逾期'); }
+    if (trainingRisk.length) { score += 2; reasons.push(trainingRisk.length + '项培训需跟进'); }
+    var level = score >= 5 ? 'high' : score >= 2 ? 'medium' : 'low';
+    return { score: score, level: level, label: { high: '高风险', medium: '中风险', low: '低风险' }[level], reasons: reasons, openTasks: tasks.length, openFindings: findings.length };
+};
+
 window.loadDashboard = async function(content) {
     const [statsData, projData, centersData, tasksData, findingsData, lettersData, packagesData, workItemsData, trainingData] = await Promise.all([
         api.getStats(), api.getProjects(), api.getCenters(), api.getTasks(), api.getFindings(), api.getEthicsLetters(), api.getEthicsSubmissionPackages(), api.getCenterWorkItems(), api.getTrainingPlans()
@@ -41,9 +67,11 @@ window.loadDashboard = async function(content) {
     const workItemFollowups = workItems.filter(function(item) {
         return item.status !== '已完成' && (window.workItemTone ? window.workItemTone(item) === 'danger' || item.status === '等待外部反馈' : true);
     }).sort(function(a, b) { return (a.follow_up_date || a.due_date || '9999-12-31').localeCompare(b.follow_up_date || b.due_date || '9999-12-31'); });
-    const riskCenters = centers
-        .filter(c => (c.task_count || 0) > 0 || (c.open_finding_count || 0) > 0)
-        .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
+    const centerRiskSources = { tasks: tasks, findings: findings, workItems: workItems, ethicsPackages: ethicsPackages, trainingPlans: trainingPlans };
+    const riskCenters = centers.map(function(center) {
+        return Object.assign({}, center, { risk: window.getCenterRiskSummary(center.id, centerRiskSources, todayStr) });
+    }).filter(function(center) { return center.risk.score > 0; })
+        .sort(function(a, b) { return b.risk.score - a.risk.score; })
         .slice(0, 4);
 
     // 首页不是待办的缩略列表：只给出此刻最值得开始的三件事。
@@ -96,9 +124,9 @@ window.loadDashboard = async function(content) {
     const centerRows = riskCenters.map(c => `<button class="wb-list-row" onclick="window.openCenterDetail('${c.id}')">
         <span class="wb-row-main">
             <strong>${window.escHtml((c.code || '') + ' ' + (c.name || ''))}</strong>
-            <small>${c.task_count || 0} 个待办 · ${c.open_finding_count || 0} 个Open问题</small>
+            <small>${window.escHtml(c.risk.reasons.slice(0, 2).join(' · '))}</small>
         </span>
-        <i class="fas fa-chevron-right"></i>
+        <span class="wb-chip ${c.risk.level === 'high' ? 'danger' : 'warning'}">${c.risk.label}</span>
     </button>`).join('') || '<div class="wb-empty">暂无高风险中心。</div>';
 
     const letterRows = letters.slice(0, 4).map(l => `<button class="wb-list-row" onclick="window.viewEthicsLetter ? window.viewEthicsLetter('${l.id}') : window.navigateTo('ethics')">
