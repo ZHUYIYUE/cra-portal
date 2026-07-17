@@ -2410,6 +2410,10 @@ body {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
 }
+/* 首页只保留行动、风险中心和事项催办；低频能力仍可从工具箱进入。 */
+.workbench-grid .workbench-panel:nth-child(2), .workbench-grid .workbench-panel:nth-child(4), .workbench-grid .workbench-panel:nth-child(5), .workbench-grid .workbench-panel:nth-child(7), .workbench-shell ~ .stats-grid, .workbench-shell ~ .alert-banner, .workbench-shell ~ .card { display:none; }
+.workbench-metrics .wb-metric:nth-child(n+5) { display:none; }
+.sidebar-tools-toggle { width:100%; display:flex; justify-content:space-between; align-items:center; border:0; background:transparent; color:#8fa0b2; padding:13px 20px; cursor:pointer; font:inherit; font-size:.84em; }.sidebar-tools-toggle span i { margin-right:9px; }.sidebar-tools { display:none; padding-bottom:5px; }.sidebar-tools.show { display:block; }.sidebar-tools .nav-item { padding-left:31px; font-size:.9em; }
 .workbench-panel {
     border: 1px solid #e8edf3;
     border-radius: 8px;

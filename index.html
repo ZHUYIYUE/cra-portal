@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRA Portal - 临床研究助理管理中心</title>
-    <link rel="stylesheet" href="static/style.css?v=20260717-work-item-excel">
+    <link rel="stylesheet" href="static/style.css?v=20260717-focus-navigation">
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.bootcdn.net/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.6/dist/pizzip.min.js"></script>
@@ -26,32 +26,21 @@
                 <i class="fas fa-tachometer-alt"></i> 工作台
             </a>
             <a href="#" class="nav-item" data-page="projects">
-                <i class="fas fa-folder-open"></i> 项目
-            </a>
-            <a href="#" class="nav-item" data-page="tasks">
-                <i class="fas fa-tasks"></i> 待办事项
+                <i class="fas fa-folder-open"></i> 项目与中心
             </a>
             <a href="#" class="nav-item" data-page="work-items">
                 <i class="fas fa-list-check"></i> 中心工作事项
             </a>
-            <a href="#" class="nav-item" data-page="findings">
-                <i class="fas fa-search"></i> 监查问题
-            </a>
-            <a href="#" class="nav-item" data-page="ethics">
-                <i class="fas fa-file-contract"></i> 伦理递交
-            </a>
-            <a href="#" class="nav-item" data-page="training">
-                <i class="fas fa-graduation-cap"></i> 培训管理
-            </a>
-            <a href="#" class="nav-item" data-page="quality">
-                <i class="fas fa-clipboard-check"></i> 数据质量
-            </a>
-            <a href="#" class="nav-item" data-page="recommend">
-                <i class="fas fa-brain"></i> 状态推荐
-            </a>
-            <a href="#" class="nav-item" data-page="startup">
-                <i class="fas fa-rocket"></i> 启动任务
-            </a>
+            <a href="#" class="nav-item" data-page="tasks"><i class="fas fa-tasks"></i> 待办事项</a>
+            <button class="sidebar-tools-toggle" type="button" onclick="window.toggleSidebarTools()"><span><i class="fas fa-ellipsis"></i> 更多工具</span><i class="fas fa-chevron-down"></i></button>
+            <div class="sidebar-tools" id="sidebarTools">
+                <a href="#" class="nav-item" data-page="findings"><i class="fas fa-search"></i> 监查问题</a>
+                <a href="#" class="nav-item" data-page="ethics"><i class="fas fa-file-contract"></i> 伦理递交</a>
+                <a href="#" class="nav-item" data-page="training"><i class="fas fa-graduation-cap"></i> 培训管理</a>
+                <a href="#" class="nav-item" data-page="quality"><i class="fas fa-clipboard-check"></i> 数据质量</a>
+                <a href="#" class="nav-item" data-page="recommend"><i class="fas fa-brain"></i> 状态推荐</a>
+                <a href="#" class="nav-item" data-page="startup"><i class="fas fa-rocket"></i> 启动任务</a>
+            </div>
         </nav>
     </div>
 
@@ -104,6 +93,6 @@
     <script src="static/js/ethics.js?v=20260716-center-work-items"></script>
     <script src="static/js/training.js?v=20260716-center-work-items"></script>
     <script src="static/js/data-quality.js?v=20260716-center-work-items"></script>
-    <script src="static/app.js?v=20260716-center-work-items"></script>
+    <script src="static/app.js?v=20260717-focus-navigation"></script>
 </body>
 </html>

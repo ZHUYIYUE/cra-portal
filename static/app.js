@@ -62,6 +62,11 @@ window.initApp = function() {
     }
 };
 
+window.toggleSidebarTools = function() {
+    var tools = document.getElementById('sidebarTools');
+    if (tools) tools.classList.toggle('show');
+};
+
 // ========== 页面导航 ==========
 
 window.navigateTo = async function(page) {
@@ -70,6 +75,8 @@ window.navigateTo = async function(page) {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.toggle('active', item.dataset.page === page);
     });
+    var tools = document.getElementById('sidebarTools');
+    if (tools && tools.querySelector('[data-page="' + page + '"]')) tools.classList.add('show');
     
     var titles = { dashboard: '工作台', projects: '项目', tasks: '待办事项', 'work-items': '中心工作事项', recommend: '状态推荐', startup: '启动任务', findings: '监查问题', ethics: '伦理递交', training: '培训管理', quality: '数据质量' };
     var pageTitle = document.getElementById('pageTitle');
