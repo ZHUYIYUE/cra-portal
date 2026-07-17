@@ -110,6 +110,8 @@ body {
 /* ====== 中心工作事项 ====== */
 .work-items-shell { display:flex; flex-direction:column; gap:16px; }
 .work-items-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.work-items-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:7px; }
+.work-item-import-tip { color:#657787; font-size:.88em; line-height:1.6; margin:0 0 12px; }.work-item-import-result { margin-top:14px; padding:12px; border:1px solid #dfe8f0; border-radius:8px; font-size:.9em; }.work-item-import-result p { color:#6b7b89; margin:6px 0 10px; }.work-item-import-result .danger-text { margin-top:8px; line-height:1.6; }
 .work-items-head h2 { color:#243445; font-size:1.25em; }
 .work-items-head h2 i { color:#3498db; margin-right:6px; }
 .work-items-head p { color:#71808f; margin-top:5px; font-size:.9em; }
