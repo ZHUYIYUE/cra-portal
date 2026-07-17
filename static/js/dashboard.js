@@ -46,18 +46,41 @@ window.loadDashboard = async function(content) {
         .sort((a, b) => ((b.open_finding_count || 0) * 3 + (b.task_count || 0)) - ((a.open_finding_count || 0) * 3 + (a.task_count || 0)))
         .slice(0, 4);
 
-    const uniqueTasks = Array.from(new Map(overdueTasks.concat(todayTasks).concat(dueWeekTasks).map(t => [t.id, t])).values()).slice(0, 6);
-    const taskRows = uniqueTasks.length ? uniqueTasks.map(t => {
+    // 首页不是待办的缩略列表：只给出此刻最值得开始的三件事。
+    // 中心事项的当前步骤已自动同步为待办，因此会进入同一排序，不形成第二套行动清单。
+    const taskPriorityScore = function(task) {
+        const isOverdue = task.due_date && task.due_date < todayStr;
+        const isToday = task.due_date === todayStr;
+        const isActive = task.task_status === 'active';
+        const isHigh = task.priority === 'high';
+        if (isOverdue && isHigh) return 0;
+        if (isOverdue) return 1;
+        if (isToday && isHigh) return 2;
+        if (isActive) return 3;
+        if (isToday) return 4;
+        if (isHigh && task.due_date && task.due_date <= weekStr) return 5;
+        return 6;
+    };
+    const priorityTasks = openTasks.filter(function(task) {
+        return (task.due_date && task.due_date <= weekStr) || task.task_status === 'active';
+    }).slice().sort(function(a, b) {
+        const scoreDiff = taskPriorityScore(a) - taskPriorityScore(b);
+        if (scoreDiff) return scoreDiff;
+        return (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31');
+    }).slice(0, 3);
+    const taskRows = priorityTasks.length ? priorityTasks.map(t => {
         const isOverdue = t.due_date && t.due_date < todayStr;
         const isToday = t.due_date === todayStr;
+        const isActive = t.task_status === 'active';
+        const label = isOverdue ? '已逾期' : isToday ? '今天' : isActive ? '执行中' : (t.due_date || '本周');
         return `<button class="wb-list-row" onclick="window.viewTask('${t.id}')">
             <span class="wb-row-main">
                 <strong>${window.escHtml(t.title)}</strong>
-                <small>${window.escHtml(t.project_name || '')}${t.center_name ? ' · ' + window.escHtml(t.center_name) : ''}</small>
+                <small>${window.escHtml(t.project_name || '')}${t.center_name ? ' · ' + window.escHtml(t.center_name) : ''}${t.source_type === 'center_work_item' ? ' · 中心事项' : ''}</small>
             </span>
-            <span class="wb-chip ${isOverdue ? 'danger' : isToday ? 'warning' : ''}">${t.due_date || '无日期'}</span>
+            <span class="wb-chip ${isOverdue ? 'danger' : isToday ? 'warning' : ''}">${label}</span>
         </button>`;
-    }).join('') : '<div class="wb-empty">今天没有明确到期的待办。</div>';
+    }).join('') : '<div class="wb-empty">今天没有临期或执行中的待办，可从待办页面安排下一步。</div>';
 
     const findingRows = activeFindings.slice(0, 5).map(f => {
         const isOverdue = f.due_date && f.due_date < todayStr;
@@ -147,7 +170,7 @@ window.loadDashboard = async function(content) {
             </div>
             <div class="workbench-grid">
                 <div class="workbench-panel">
-                    <div class="wb-panel-title"><i class="fas fa-list-check"></i> 优先处理</div>
+                    <div class="wb-panel-title"><i class="fas fa-bullseye"></i> 今日三件事 <button class="wb-panel-link" onclick="window.navigateTo('tasks')">查看全部</button></div>
                     ${taskRows}
                 </div>
                 <div class="workbench-panel">
